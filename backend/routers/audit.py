@@ -1,0 +1,45 @@
+"""Feature 6: Audit Request Generator"""
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+from services.ai_service import generate_audit_letter
+from services.data_service import get_claims, audit_report
+
+router = APIRouter(prefix="/api/audit", tags=["audit"])
+
+
+class AuditRequest(BaseModel):
+    contract_findings: Optional[Dict[str, Any]] = None
+    custom_findings: Optional[Dict[str, Any]] = None
+
+
+@router.post("/generate")
+async def generate_audit(request: AuditRequest = None):
+    """
+    Generate a formal audit request letter.
+    Cites DOL rule provisions, specifies data the employer is entitled to,
+    includes 10-business-day response deadline.
+    """
+    # Use provided contract findings or generate from claims data
+    if request and request.contract_findings:
+        contract_data = request.contract_findings
+    else:
+        contract_data = {
+            "rebate_passthrough": {"found": True, "percentage": "85% of eligible rebates", "details": "Narrow definition excludes admin fees and volume bonuses"},
+            "spread_pricing": {"found": True, "caps": "None", "details": "PBM retains full spread with no transparency"},
+            "audit_rights": {"found": True, "scope": "Claims data only", "details": "Does not include rebate contracts or pharmacy reimbursement"},
+        }
+
+    if request and request.custom_findings:
+        findings = request.custom_findings
+    else:
+        claims = get_claims()
+        findings = audit_report(claims)
+
+    result = await generate_audit_letter(contract_data, findings)
+
+    return {
+        "status": "success",
+        "audit_letter": result,
+    }
