@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import StatusBadge from "@/components/StatusBadge";
-import { DollarSign, Loader2, AlertTriangle } from "lucide-react";
+import { DollarSign, Loader2, AlertTriangle, RefreshCw, Database, CheckCircle2, Scale } from "lucide-react";
 
 interface RebateDrug {
   drug: string;
@@ -58,53 +58,77 @@ function FlowBar({ label, total, passed, retained }: { label: string; total: num
   );
 }
 
+interface ClaimsStatus {
+  custom_data_loaded: boolean;
+  claims_count: number;
+  filename?: string;
+}
+
 export default function RebatesPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(demoData);
+  const [claimsStatus, setClaimsStatus] = useState<ClaimsStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchClaimsStatus = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/claims/status");
+      if (res.ok) setClaimsStatus(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/rebates/analysis");
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      const ra = json?.rebate_analysis;
+      if (ra) {
+        const manufacturers: Record<string, string> = {
+          "Trulicity": "Eli Lilly", "Ozempic": "Novo Nordisk", "Humira": "AbbVie",
+          "Insulin Glargine": "Sanofi", "Stelara": "J&J", "Eliquis": "BMS/Pfizer",
+          "Jardiance": "Boehringer", "Keytruda": "Merck", "Dupixent": "Regeneron/Sanofi",
+          "Skyrizi": "AbbVie", "Xarelto": "J&J/Bayer",
+        };
+        setData({
+          totalRebates: ra.total_rebates_earned,
+          totalPassedThrough: ra.rebates_passed_to_plan,
+          totalRetained: ra.rebates_retained_by_pbm,
+          leakagePct: ra.leakage_pct,
+          drugs: (ra.top_leakage_drugs || []).map((d: Record<string, unknown>) => {
+            const name = (d.drug_name as string) || "";
+            const baseName = name.split(" ")[0];
+            return {
+              drug: name,
+              manufacturer: manufacturers[baseName] || "Pharmaceutical Co.",
+              totalRebate: (d.total_rebate as number) || 0,
+              passedThrough: (d.amount_passed as number) || 0,
+              retained: (d.amount_retained_by_pbm as number) || 0,
+              retainedPct: d.passthrough_rate ? 100 - (d.passthrough_rate as number) : 0,
+            };
+          }),
+        });
+      } else {
+        setData(demoData);
+      }
+    } catch {
+      setData(demoData);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch("/api/rebates/analysis");
-        if (!res.ok) throw new Error();
-        const json = await res.json();
-        const ra = json?.rebate_analysis;
-        if (ra) {
-          const manufacturers: Record<string, string> = {
-            "Trulicity": "Eli Lilly", "Ozempic": "Novo Nordisk", "Humira": "AbbVie",
-            "Insulin Glargine": "Sanofi", "Stelara": "J&J", "Eliquis": "BMS/Pfizer",
-            "Jardiance": "Boehringer", "Keytruda": "Merck", "Dupixent": "Regeneron/Sanofi",
-            "Skyrizi": "AbbVie", "Xarelto": "J&J/Bayer",
-          };
-          setData({
-            totalRebates: ra.total_rebates_earned,
-            totalPassedThrough: ra.rebates_passed_to_plan,
-            totalRetained: ra.rebates_retained_by_pbm,
-            leakagePct: ra.leakage_pct,
-            drugs: (ra.top_leakage_drugs || []).map((d: Record<string, unknown>) => {
-              const name = (d.drug_name as string) || "";
-              const baseName = name.split(" ")[0];
-              return {
-                drug: name,
-                manufacturer: manufacturers[baseName] || "Pharmaceutical Co.",
-                totalRebate: (d.total_rebate as number) || 0,
-                passedThrough: (d.amount_passed as number) || 0,
-                retained: (d.amount_retained_by_pbm as number) || 0,
-                retainedPct: d.passthrough_rate ? 100 - (d.passthrough_rate as number) : 0,
-              };
-            }),
-          });
-        } else {
-          setData(demoData);
-        }
-      } catch {
-        setData(demoData);
-      } finally {
-        setLoading(false);
-      }
-    };
+    fetchClaimsStatus();
     fetchData();
-  }, []);
+  }, [fetchClaimsStatus, fetchData]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchClaimsStatus();
+    fetchData();
+  };
 
   if (loading) {
     return (
@@ -125,6 +149,43 @@ export default function RebatesPage() {
         <p className="text-gray-500 mt-1">
           Track manufacturer rebate flow from PBM to plan sponsor
         </p>
+      </div>
+
+      {/* Data Source Banner */}
+      <div className={`rounded-lg border px-4 py-2.5 mb-4 flex items-center justify-between ${
+        claimsStatus?.custom_data_loaded
+          ? "bg-emerald-50 border-emerald-200"
+          : "bg-blue-50 border-blue-200"
+      }`}>
+        <div className="flex items-center gap-2">
+          {claimsStatus?.custom_data_loaded ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          ) : (
+            <Database className="w-4 h-4 text-blue-600" />
+          )}
+          <span className={`text-sm font-medium ${claimsStatus?.custom_data_loaded ? "text-emerald-800" : "text-blue-800"}`}>
+            Analyzing: {claimsStatus?.custom_data_loaded
+              ? `Your Uploaded Data (${claimsStatus.claims_count.toLocaleString()} claims)`
+              : `Sample Claims Data (${claimsStatus?.claims_count?.toLocaleString() || "500"} claims)`}
+          </span>
+        </div>
+        <button onClick={handleRefresh} disabled={refreshing} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh Analysis
+        </button>
+      </div>
+
+      {/* Contract vs Reality Callout */}
+      <div className="bg-gradient-to-r from-[#1e3a5f] to-[#2a4f7f] rounded-xl p-5 mb-6 text-white">
+        <div className="flex items-center gap-3">
+          <Scale className="w-7 h-7 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-bold">Contract vs Reality</p>
+            <p className="text-sm text-blue-200">
+              Your contract guarantees 100% rebate passthrough (per HR 7148). Actual passthrough: <span className="font-bold text-white">{(100 - data.leakagePct).toFixed(1)}%</span>. Gap: <span className="font-bold text-amber-300">{data.leakagePct.toFixed(1)}%</span> ({formatCurrency(data.totalRetained)} retained by PBM)
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">

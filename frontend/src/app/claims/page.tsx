@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Upload,
   FileCheck,
@@ -10,6 +11,7 @@ import {
   AlertCircle,
   CheckCircle2,
   FileSpreadsheet,
+  ArrowRight,
 } from "lucide-react";
 
 interface ClaimsStatus {
@@ -321,6 +323,26 @@ export default function ClaimsPage() {
               <p className="text-xs text-gray-500 uppercase">Total Rebates</p>
               <p className="text-2xl font-bold text-gray-900">${summary.total_rebates.toLocaleString()}</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analysis Links (shown after successful upload) */}
+      {summary && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 mb-6">
+          <p className="text-sm font-semibold text-emerald-800 mb-3">
+            Your data is loaded! View analysis:
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/reports" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 text-sm font-medium transition-colors">
+              Report Auditor <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+            <Link href="/rebates" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 text-sm font-medium transition-colors">
+              Rebate Tracker <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+            <Link href="/spread" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 text-sm font-medium transition-colors">
+              Spread Pricing <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       )}

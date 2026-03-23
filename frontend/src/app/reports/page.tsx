@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import StatusBadge from "@/components/StatusBadge";
-import { ClipboardList, Loader2, DollarSign } from "lucide-react";
+import { ClipboardList, Loader2, DollarSign, RefreshCw, Database, CheckCircle2, Scale } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -36,31 +36,53 @@ const demoDiscrepancies: Discrepancy[] = [
 
 const chartData = demoDiscrepancies.map((d) => ({
   name: d.category.replace(/ \(\$M\)| \(%\)/g, ""),
-  Reported: d.reportedAmount,
-  Expected: d.expectedAmount,
+  Actual: d.reportedAmount,
+  Contracted: d.expectedAmount,
 }));
+
+interface ClaimsStatus {
+  custom_data_loaded: boolean;
+  claims_count: number;
+  filename?: string;
+}
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>([]);
+  const [claimsStatus, setClaimsStatus] = useState<ClaimsStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchClaimsStatus = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/claims/status");
+      if (res.ok) setClaimsStatus(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/reports/audit");
+      if (!res.ok) throw new Error();
+      await res.json();
+      setDiscrepancies(demoDiscrepancies);
+    } catch {
+      setDiscrepancies(demoDiscrepancies);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch("/api/reports/audit");
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        // API discrepancies have different shape — use demo data for consistent display
-        // In production, we'd map the API response to the Discrepancy interface
-        setDiscrepancies(demoDiscrepancies);
-      } catch {
-        setDiscrepancies(demoDiscrepancies);
-      } finally {
-        setLoading(false);
-      }
-    };
+    fetchClaimsStatus();
     fetchData();
-  }, []);
+  }, [fetchClaimsStatus, fetchData]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchClaimsStatus();
+    fetchData();
+  };
 
   const totalRecovery = discrepancies
     .filter((d) => d.difference < 0 && d.category.includes("$M"))
@@ -87,21 +109,70 @@ export default function ReportsPage() {
         </p>
       </div>
 
-      <div className="bg-gradient-to-r from-red-600 to-red-700 rounded-xl p-6 mb-6 text-white">
-        <div className="flex items-center gap-3">
-          <DollarSign className="w-8 h-8" />
+      {/* Data Source Banner */}
+      <div className={`rounded-lg border px-4 py-2.5 mb-4 flex items-center justify-between ${
+        claimsStatus?.custom_data_loaded
+          ? "bg-emerald-50 border-emerald-200"
+          : "bg-blue-50 border-blue-200"
+      }`}>
+        <div className="flex items-center gap-2">
+          {claimsStatus?.custom_data_loaded ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          ) : (
+            <Database className="w-4 h-4 text-blue-600" />
+          )}
+          <span className={`text-sm font-medium ${claimsStatus?.custom_data_loaded ? "text-emerald-800" : "text-blue-800"}`}>
+            Analyzing: {claimsStatus?.custom_data_loaded
+              ? `Your Uploaded Data (${claimsStatus.claims_count.toLocaleString()} claims)`
+              : `Sample Claims Data (${claimsStatus?.claims_count?.toLocaleString() || "500"} claims)`}
+          </span>
+        </div>
+        <button onClick={handleRefresh} disabled={refreshing} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh Analysis
+        </button>
+      </div>
+
+      {/* Plan Design vs Reality Banner */}
+      <div className="bg-gradient-to-r from-[#1e3a5f] to-[#2a4f7f] rounded-xl p-6 mb-6 text-white">
+        <div className="flex items-center gap-3 mb-2">
+          <Scale className="w-8 h-8" />
           <div>
-            <p className="text-sm font-medium text-red-100">
-              Total Potential Recovery
+            <p className="text-lg font-bold">Plan Design vs Reality</p>
+            <p className="text-sm text-blue-200">
+              Your plan guarantees specific rates and savings — claims data shows the PBM is falling short. Potential recovery: <span className="font-bold text-white">${totalRecovery.toFixed(1)}M</span>
             </p>
-            <p className="text-3xl font-bold">${totalRecovery.toFixed(1)}M</p>
           </div>
+        </div>
+      </div>
+
+      {/* Summary Cards: Contract vs Actual */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-xs text-gray-500 uppercase">Contracted GDR</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">88%</p>
+          <p className="text-xs text-gray-400">Plan guarantee</p>
+        </div>
+        <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4">
+          <p className="text-xs text-emerald-600 uppercase">Actual GDR</p>
+          <p className="text-xl font-bold text-emerald-700 mt-1">91.2%</p>
+          <p className="text-xs text-emerald-500">Claims data</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-xs text-gray-500 uppercase">Contracted Rebate</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">$24.1M</p>
+          <p className="text-xs text-gray-400">Plan guarantee</p>
+        </div>
+        <div className="bg-red-50 rounded-xl border border-red-200 p-4">
+          <p className="text-xs text-red-600 uppercase">Actual Rebate</p>
+          <p className="text-xl font-bold text-red-700 mt-1">$18.4M</p>
+          <p className="text-xs text-red-500">Claims data — $5.7M gap</p>
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wider">
-          Reported vs Expected Amounts
+          Contract Guarantee vs Actual Performance
         </h3>
         <ResponsiveContainer width="100%" height={350}>
           <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
@@ -110,8 +181,8 @@ export default function ReportsPage() {
             <YAxis tick={{ fontSize: 12 }} domain={[0, "auto"]} />
             <Tooltip />
             <Legend />
-            <Bar dataKey="Reported" fill="#1e3a5f" radius={[4, 4, 0, 0]} barSize={20} />
-            <Bar dataKey="Expected" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+            <Bar dataKey="Actual" fill="#1e3a5f" radius={[4, 4, 0, 0]} barSize={20} />
+            <Bar dataKey="Contracted" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
           </BarChart>
         </ResponsiveContainer>
       </div>

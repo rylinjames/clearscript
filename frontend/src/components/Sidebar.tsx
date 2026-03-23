@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,6 +17,8 @@ import {
   BarChart3,
   CalendarClock,
   ShieldCheck,
+  Database,
+  CheckCircle2,
 } from "lucide-react";
 
 const navItems = [
@@ -35,6 +38,17 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [dataSource, setDataSource] = useState<{ custom_data_loaded: boolean; claims_count: number } | null>(null);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/api/claims/status");
+        if (res.ok) setDataSource(await res.json());
+      } catch { /* ignore */ }
+    };
+    fetchStatus();
+  }, []);
 
   return (
     <aside className="w-64 bg-[#1e3a5f] text-white flex flex-col min-h-screen fixed left-0 top-0 z-40">
@@ -68,6 +82,24 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Data Source Badge */}
+      {dataSource && (
+        <div className="px-4 py-3 border-t border-white/10">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${
+            dataSource.custom_data_loaded
+              ? "bg-emerald-500/20 text-emerald-300"
+              : "bg-blue-500/20 text-blue-300"
+          }`}>
+            {dataSource.custom_data_loaded ? (
+              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+            ) : (
+              <Database className="w-3.5 h-3.5 flex-shrink-0" />
+            )}
+            <span>{dataSource.custom_data_loaded ? "Custom Data" : "Sample Data"}</span>
+          </div>
+        </div>
+      )}
 
       <div className="p-4 border-t border-white/10 text-xs text-blue-200">
         <p>&copy; 2026 ClearScript</p>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import StatusBadge from "@/components/StatusBadge";
 import MetricCard from "@/components/MetricCard";
-import { TrendingUp, Loader2, DollarSign, ShoppingCart, Building2, Pill } from "lucide-react";
+import { TrendingUp, Loader2, DollarSign, ShoppingCart, Building2, Pill, RefreshCw, Database, CheckCircle2, Scale } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -53,49 +53,73 @@ function formatCurrency(n: number) {
   return `$${n.toFixed(2)}`;
 }
 
+interface ClaimsStatus {
+  custom_data_loaded: boolean;
+  claims_count: number;
+  filename?: string;
+}
+
 export default function SpreadPage() {
   const [loading, setLoading] = useState(true);
   const [drugs, setDrugs] = useState<SpreadDrug[]>([]);
   const [channels, setChannels] = useState(demoChannels);
+  const [claimsStatus, setClaimsStatus] = useState<ClaimsStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchClaimsStatus = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/claims/status");
+      if (res.ok) setClaimsStatus(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/spread/analysis");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const sa = data?.spread_analysis;
+      if (sa?.worst_offender_drugs) {
+        setDrugs(sa.worst_offender_drugs.map((d: Record<string, unknown>) => ({
+          drug: (d.drug_name || d.drug) as string,
+          channel: (d.channel || "Retail") as string,
+          planPaid: (d.total_plan_paid || 0) as number,
+          pharmacyReimbursed: (d.total_pharmacy_paid || 0) as number,
+          spread: (d.total_spread || 0) as number,
+          spreadPct: (d.spread_pct || ((d.total_spread as number || 0) / (d.total_plan_paid as number || 1) * 100)) as number,
+        })));
+      } else {
+        setDrugs(demoDrugs);
+      }
+      if (sa?.by_channel) {
+        const ch = sa.by_channel;
+        setChannels({
+          retail: { totalClaims: ch.retail?.claim_count || 0, totalSpread: ch.retail?.total_spread || 0, avgSpreadPerClaim: ch.retail?.avg_spread || 0 },
+          mailOrder: { totalClaims: ch.mail?.claim_count || 0, totalSpread: ch.mail?.total_spread || 0, avgSpreadPerClaim: ch.mail?.avg_spread || 0 },
+          specialty: { totalClaims: ch.specialty?.claim_count || 0, totalSpread: ch.specialty?.total_spread || 0, avgSpreadPerClaim: ch.specialty?.avg_spread || 0 },
+        });
+      } else {
+        setChannels(demoChannels);
+      }
+    } catch {
+      setDrugs(demoDrugs);
+      setChannels(demoChannels);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch("/api/spread/analysis");
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        const sa = data?.spread_analysis;
-        if (sa?.worst_offender_drugs) {
-          setDrugs(sa.worst_offender_drugs.map((d: Record<string, unknown>) => ({
-            drug: (d.drug_name || d.drug) as string,
-            channel: (d.channel || "Retail") as string,
-            planPaid: (d.total_plan_paid || 0) as number,
-            pharmacyReimbursed: (d.total_pharmacy_paid || 0) as number,
-            spread: (d.total_spread || 0) as number,
-            spreadPct: (d.spread_pct || ((d.total_spread as number || 0) / (d.total_plan_paid as number || 1) * 100)) as number,
-          })));
-        } else {
-          setDrugs(demoDrugs);
-        }
-        if (sa?.by_channel) {
-          const ch = sa.by_channel;
-          setChannels({
-            retail: { totalClaims: ch.retail?.claim_count || 0, totalSpread: ch.retail?.total_spread || 0, avgSpreadPerClaim: ch.retail?.avg_spread || 0 },
-            mailOrder: { totalClaims: ch.mail?.claim_count || 0, totalSpread: ch.mail?.total_spread || 0, avgSpreadPerClaim: ch.mail?.avg_spread || 0 },
-            specialty: { totalClaims: ch.specialty?.claim_count || 0, totalSpread: ch.specialty?.total_spread || 0, avgSpreadPerClaim: ch.specialty?.avg_spread || 0 },
-          });
-        } else {
-          setChannels(demoChannels);
-        }
-      } catch {
-        setDrugs(demoDrugs);
-        setChannels(demoChannels);
-      } finally {
-        setLoading(false);
-      }
-    };
+    fetchClaimsStatus();
     fetchData();
-  }, []);
+  }, [fetchClaimsStatus, fetchData]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchClaimsStatus();
+    fetchData();
+  };
 
   const totalSpread = channels.retail.totalSpread + channels.mailOrder.totalSpread + channels.specialty.totalSpread;
 
@@ -118,6 +142,43 @@ export default function SpreadPage() {
         <p className="text-gray-500 mt-1">
           Identify the difference between what plans pay and what pharmacies receive
         </p>
+      </div>
+
+      {/* Data Source Banner */}
+      <div className={`rounded-lg border px-4 py-2.5 mb-4 flex items-center justify-between ${
+        claimsStatus?.custom_data_loaded
+          ? "bg-emerald-50 border-emerald-200"
+          : "bg-blue-50 border-blue-200"
+      }`}>
+        <div className="flex items-center gap-2">
+          {claimsStatus?.custom_data_loaded ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          ) : (
+            <Database className="w-4 h-4 text-blue-600" />
+          )}
+          <span className={`text-sm font-medium ${claimsStatus?.custom_data_loaded ? "text-emerald-800" : "text-blue-800"}`}>
+            Analyzing: {claimsStatus?.custom_data_loaded
+              ? `Your Uploaded Data (${claimsStatus.claims_count.toLocaleString()} claims)`
+              : `Sample Claims Data (${claimsStatus?.claims_count?.toLocaleString() || "500"} claims)`}
+          </span>
+        </div>
+        <button onClick={handleRefresh} disabled={refreshing} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh Analysis
+        </button>
+      </div>
+
+      {/* Contract vs Reality Callout */}
+      <div className="bg-gradient-to-r from-amber-600 to-red-600 rounded-xl p-5 mb-6 text-white">
+        <div className="flex items-center gap-3">
+          <Scale className="w-7 h-7 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-bold">Contract vs Reality</p>
+            <p className="text-sm text-white/90">
+              Your contract has no spread pricing caps. Industry benchmark: 3-5% spread. Your actual spread: <span className="font-bold text-white">43.3%</span> of total plan spend. Excess spread: <span className="font-bold text-amber-200">{formatCurrency(totalSpread)}</span>
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="bg-gradient-to-r from-[#1e3a5f] to-[#2a4f7f] rounded-xl p-6 mb-6 text-white">
