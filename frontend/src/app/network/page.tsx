@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import StatusBadge from "@/components/StatusBadge";
 import ScoreCircle from "@/components/ScoreCircle";
 import { MapPin, Loader2, AlertTriangle } from "lucide-react";
@@ -52,6 +52,15 @@ export default function NetworkPage() {
   const [results, setResults] = useState<ZipResult[] | null>(null);
   const [phantoms, setPhantoms] = useState<PhantomPharmacy[]>([]);
 
+  const hasAutoLoaded = useRef(false);
+  useEffect(() => {
+    if (!hasAutoLoaded.current) {
+      hasAutoLoaded.current = true;
+      handleAnalyze();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleAnalyze = async () => {
     setLoading(true);
     setResults(null);
@@ -66,35 +75,34 @@ export default function NetworkPage() {
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      // Map API response — handle both camelCase and snake_case field names
-      const apiResults = data.results || data.zip_results;
-      if (apiResults && apiResults.length > 0) {
+      const na = data?.network_analysis;
+      if (na?.coverage_areas && na.coverage_areas.length > 0) {
         setResults(
-          apiResults.map((r: Record<string, unknown>) => ({
-            zip: r.zip || r.zip_code,
-            pharmaciesInNetwork: r.pharmaciesInNetwork ?? r.pharmacies_in_network ?? 0,
-            pharmaciesNeeded: r.pharmaciesNeeded ?? r.pharmacies_needed ?? 3,
-            adequate: r.adequate ?? r.is_adequate ?? false,
-            nearestPharmacyMiles: r.nearestPharmacyMiles ?? r.nearest_pharmacy_miles ?? 0,
+          na.coverage_areas.map((r: Record<string, unknown>) => ({
+            zip: (r.zip_code || r.zip) as string,
+            pharmaciesInNetwork: (r.pharmacies_within_5mi || r.pharmacies_in_network || 0) as number,
+            pharmaciesNeeded: 3,
+            adequate: (r.adequacy_met ?? r.adequate ?? false) as boolean,
+            nearestPharmacyMiles: (r.nearest_pharmacy_miles || (r.pharmacies_within_5mi ? 2.5 : 8.0)) as number,
           }))
         );
       } else {
         setResults(demoResults);
       }
-      const apiPhantoms = data.phantomPharmacies || data.phantom_pharmacies;
-      if (apiPhantoms && apiPhantoms.length > 0) {
+      if (na?.phantom_details && na.phantom_details.length > 0) {
         setPhantoms(
-          apiPhantoms.map((p: Record<string, unknown>) => ({
-            name: p.name || "",
-            npi: p.npi || "",
-            zip: p.zip || p.zip_code || "",
-            reason: p.reason || p.reason_flagged || "",
+          na.phantom_details.map((p: Record<string, unknown>) => ({
+            name: (p.name || "") as string,
+            npi: (p.npi || "") as string,
+            zip: (p.zip || p.zip_code || "") as string,
+            reason: (p.reason || p.reason_flagged || "") as string,
           }))
         );
       } else {
         setPhantoms(demoPhantoms);
       }
-    } catch {
+    } catch (err) {
+      console.error("Network analysis error:", err);
       setResults(demoResults);
       setPhantoms(demoPhantoms);
     } finally {
