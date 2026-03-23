@@ -10,6 +10,10 @@ router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 
 class AuditRequest(BaseModel):
+    employer_name: Optional[str] = "Acme Corporation"
+    pbm_name: Optional[str] = "OptumRx"
+    contract_date: Optional[str] = None
+    concerns: Optional[str] = None
     contract_findings: Optional[Dict[str, Any]] = None
     custom_findings: Optional[Dict[str, Any]] = None
 
@@ -21,15 +25,18 @@ async def generate_audit(request: AuditRequest = None):
     Cites DOL rule provisions, specifies data the employer is entitled to,
     includes 10-business-day response deadline.
     """
-    # Use provided contract findings or generate from claims data
+    contract_data = {
+        "employer_name": request.employer_name if request else "Acme Corporation",
+        "pbm_name": request.pbm_name if request else "OptumRx",
+        "contract_date": request.contract_date if request else "January 15, 2024",
+        "concerns": request.concerns if request else "",
+        "rebate_passthrough": {"found": True, "percentage": "85% of eligible rebates", "details": "Narrow definition excludes admin fees and volume bonuses"},
+        "spread_pricing": {"found": True, "caps": "None", "details": "PBM retains full spread with no transparency"},
+        "audit_rights": {"found": True, "scope": "Claims data only", "details": "Does not include rebate contracts or pharmacy reimbursement"},
+    }
+
     if request and request.contract_findings:
-        contract_data = request.contract_findings
-    else:
-        contract_data = {
-            "rebate_passthrough": {"found": True, "percentage": "85% of eligible rebates", "details": "Narrow definition excludes admin fees and volume bonuses"},
-            "spread_pricing": {"found": True, "caps": "None", "details": "PBM retains full spread with no transparency"},
-            "audit_rights": {"found": True, "scope": "Claims data only", "details": "Does not include rebate contracts or pharmacy reimbursement"},
-        }
+        contract_data.update(request.contract_findings)
 
     if request and request.custom_findings:
         findings = request.custom_findings
@@ -41,5 +48,5 @@ async def generate_audit(request: AuditRequest = None):
 
     return {
         "status": "success",
-        "audit_letter": result,
+        "letter": result,
     }

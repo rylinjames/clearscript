@@ -40,28 +40,29 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000
                 "max_output_tokens": max_tokens,
             },
         )
-        return response.text
-    return await asyncio.to_thread(_call)
+        text = response.text
+        # Clean up common Gemini JSON issues
+        if text:
+            text = text.strip()
+            # Remove markdown code fences if present
+            if text.startswith("```"):
+                text = text.split("\n", 1)[-1]
+                if text.endswith("```"):
+                    text = text[:-3].strip()
+        return text
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)
+    except asyncio.TimeoutError:
+        raise TimeoutError("Gemini API call timed out after 25 seconds")
 
 # ─── Contract Analysis ──────────────────────────────────────────────────────────
 
 CONTRACT_SYSTEM_PROMPT = """You are a PBM contract analyst for employer health plan sponsors.
-Analyze the provided PBM contract text and extract the following terms as structured JSON:
+Analyze the provided PBM contract text and extract key terms. Return valid JSON with exactly this structure:
 
-{
-  "rebate_passthrough": {"found": bool, "percentage": str or null, "details": str},
-  "spread_pricing": {"found": bool, "caps": str or null, "details": str},
-  "formulary_clauses": {"found": bool, "change_notification_days": int or null, "details": str},
-  "audit_rights": {"found": bool, "frequency": str or null, "scope": str or null, "details": str},
-  "mac_pricing": {"found": bool, "update_frequency": str or null, "appeal_rights": bool, "details": str},
-  "termination_provisions": {"found": bool, "notice_days": int or null, "penalties": str or null, "details": str},
-  "gag_clauses": {"found": bool, "details": str},
-  "compliance_flags": [{"issue": str, "severity": "high"|"medium"|"low", "recommendation": str}],
-  "overall_risk_score": int (0-100, higher = more risk for employer),
-  "summary": str
-}
+{"rebate_passthrough": {"found": true, "percentage": "85% of eligible rebates", "details": "description of rebate terms"}, "spread_pricing": {"found": true, "caps": "No explicit caps found", "details": "description of spread pricing terms"}, "formulary_clauses": {"found": true, "change_notification_days": 60, "details": "description of formulary management terms"}, "audit_rights": {"found": true, "frequency": "Once per year", "scope": "Claims data only", "details": "description of audit rights"}, "mac_pricing": {"found": true, "update_frequency": "Monthly", "appeal_rights": false, "details": "description of MAC pricing"}, "termination_provisions": {"found": true, "notice_days": 180, "penalties": "Liquidated damages", "details": "description of termination terms"}, "gag_clauses": {"found": true, "details": "description of any gag clauses"}, "compliance_flags": [{"issue": "description of compliance issue", "severity": "high", "recommendation": "what to do about it"}], "overall_risk_score": 78, "summary": "overall assessment of the contract"}
 
-Be thorough and flag any terms that are unfavorable to the plan sponsor.
+IMPORTANT: overall_risk_score MUST be an integer 0-100. severity MUST be "high", "medium", or "low". All string values must use double quotes. Be thorough and flag terms unfavorable to the plan sponsor.
 """
 
 async def analyze_contract(text: str) -> dict:
