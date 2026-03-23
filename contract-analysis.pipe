@@ -1,0 +1,66 @@
+{
+  "name": "PBM Contract Analysis Pipeline",
+  "description": "Analyzes PBM contracts for compliance issues, extracts key terms, and flags non-compliant clauses against DOL transparency rules and HR 7148",
+  "version": 1,
+  "source": "contract_input",
+  "components": [
+    {
+      "id": "contract_input",
+      "provider": "webhook",
+      "name": "Contract Input",
+      "description": "Receives PBM contract text for analysis",
+      "config": {
+        "path": "/contract-analyze"
+      }
+    },
+    {
+      "id": "clause_extractor",
+      "provider": "llm_gemini",
+      "name": "PBM Clause Extractor",
+      "description": "Extracts key PBM contract terms: rebate passthrough, spread pricing, audit rights, MAC pricing, formulary clauses, termination provisions, and gag clauses",
+      "config": {
+        "apikey": "${GEMINI_API_KEY}",
+        "model": "gemini-2.5-flash",
+        "temperature": 0.2,
+        "system_prompt": "You are a PBM contract analyst for employer health plan sponsors. Extract key contract terms from the provided PBM contract text. Return a JSON object with these fields: rebate_passthrough (found, percentage, details), spread_pricing (found, caps, details), formulary_clauses (found, change_notification_days, details), audit_rights (found, frequency, scope, details), mac_pricing (found, update_frequency, appeal_rights, details), termination_provisions (found, notice_days, penalties, details), gag_clauses (found, details). Be thorough and note any terms unfavorable to the plan sponsor."
+      },
+      "input": [
+        {
+          "from": "contract_input",
+          "lane": "output"
+        }
+      ]
+    },
+    {
+      "id": "compliance_scorer",
+      "provider": "llm_gemini",
+      "name": "DOL Compliance Scorer",
+      "description": "Evaluates extracted clauses against DOL transparency rules and HR 7148 requirements, assigns risk score and compliance flags",
+      "config": {
+        "apikey": "${GEMINI_API_KEY}",
+        "model": "gemini-2.5-flash",
+        "temperature": 0.2,
+        "system_prompt": "You are a DOL compliance expert. Given the extracted PBM contract terms, evaluate compliance against: (1) HR 7148 requiring 100% rebate passthrough, (2) DOL transparency rule requiring unrestricted audit rights with 10-day response, (3) CAA 2021 gag clause prohibition, (4) ERISA fiduciary obligations. Return JSON with: compliance_flags (array of {issue, severity high/medium/low, recommendation}), overall_risk_score (0-100, higher=more risk), summary (string)."
+      },
+      "input": [
+        {
+          "from": "clause_extractor",
+          "lane": "answer"
+        }
+      ]
+    },
+    {
+      "id": "analysis_output",
+      "provider": "response",
+      "name": "Analysis Output",
+      "description": "Returns the complete contract analysis with extracted terms and compliance assessment",
+      "config": {},
+      "input": [
+        {
+          "from": "compliance_scorer",
+          "lane": "answer"
+        }
+      ]
+    }
+  ]
+}

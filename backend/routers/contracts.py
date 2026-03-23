@@ -1,7 +1,7 @@
 """Feature 1: Contract Intake & Parsing"""
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from services.ai_service import analyze_contract
+from services.pipeline_service import run_contract_pipeline, get_pipeline_status
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
 
@@ -34,14 +34,21 @@ async def upload_contract(file: UploadFile = File(...)):
         # If content is too short (binary PDF not decoded), use a demo contract
         text = _demo_contract_text()
 
-    result = await analyze_contract(text)
+    result = await run_contract_pipeline(text)
 
     return {
         "status": "success",
         "filename": file.filename,
         "file_size": len(content),
         "analysis": result,
+        "engine": "rocketride_pipeline",
     }
+
+
+@router.get("/pipeline-status")
+async def pipeline_status():
+    """Check if RocketRide pipeline engine is available."""
+    return await get_pipeline_status()
 
 
 def _demo_contract_text() -> str:
