@@ -1,31 +1,47 @@
 """
-OpenAI GPT-5 mini integration for ClearScript.
+Google Gemini integration for ClearScript.
 Provides AI-powered contract analysis, disclosure review, audit letter generation, and report analysis.
 Falls back to realistic mock data if the API call fails so the demo never breaks.
 """
 
 import os
 import json
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from google import genai
 
 # Load .env from project root (one level up from backend/)
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 _client = None
+MODEL = "gemini-2.5-flash"
 
-def _get_client() -> AsyncOpenAI:
+def _get_client():
     global _client
     if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("OPENAI_API_KEY not set")
-        _client = AsyncOpenAI(api_key=api_key)
+            raise ValueError("GEMINI_API_KEY not set")
+        _client = genai.Client(api_key=api_key)
     return _client
 
-MODEL = "gpt-5-mini"
+async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000) -> str:
+    """Run Gemini generation in a thread to keep it async-compatible."""
+    client = _get_client()
+    def _call():
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=f"{system_prompt}\n\n{user_prompt}",
+            config={
+                "response_mime_type": "application/json",
+                "temperature": 0.2,
+                "max_output_tokens": max_tokens,
+            },
+        )
+        return response.text
+    return await asyncio.to_thread(_call)
 
 # ─── Contract Analysis ──────────────────────────────────────────────────────────
 
@@ -50,18 +66,8 @@ Be thorough and flag any terms that are unfavorable to the plan sponsor.
 
 async def analyze_contract(text: str) -> dict:
     try:
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": CONTRACT_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Analyze this PBM contract:\n\n{text[:12000]}"}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-            max_tokens=3000,
-        )
-        return json.loads(response.choices[0].message.content)
+        result = await _generate(CONTRACT_SYSTEM_PROMPT, f"Analyze this PBM contract:\n\n{text[:12000]}", 3000)
+        return json.loads(result)
     except Exception as e:
         print(f"AI contract analysis failed: {e}")
         return _mock_contract_analysis()
@@ -171,18 +177,8 @@ DOL_REQUIRED_ITEMS = [
 
 async def analyze_disclosure(text: str) -> dict:
     try:
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": DISCLOSURE_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Analyze this PBM disclosure document for DOL compliance:\n\n{text[:12000]}"}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-            max_tokens=4000,
-        )
-        return json.loads(response.choices[0].message.content)
+        result = await _generate(DISCLOSURE_SYSTEM_PROMPT, f"Analyze this PBM disclosure document for DOL compliance:\n\n{text[:12000]}", 4000)
+        return json.loads(result)
     except Exception as e:
         print(f"AI disclosure analysis failed: {e}")
         return _mock_disclosure_analysis()
@@ -256,18 +252,8 @@ Return JSON with:
 
 async def generate_audit_letter(contract_data: dict, findings: dict) -> dict:
     try:
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": AUDIT_LETTER_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Generate an audit request letter based on these findings:\n\nContract Analysis:\n{json.dumps(contract_data, indent=2)[:4000]}\n\nAudit Findings:\n{json.dumps(findings, indent=2)[:4000]}"}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.3,
-            max_tokens=4000,
-        )
-        return json.loads(response.choices[0].message.content)
+        result = await _generate(AUDIT_LETTER_SYSTEM_PROMPT, f"Generate an audit request letter based on these findings:\n\nContract Analysis:\n{json.dumps(contract_data, indent=2)[:4000]}\n\nAudit Findings:\n{json.dumps(findings, indent=2)[:4000]}", 4000)
+        return json.loads(result)
     except Exception as e:
         print(f"AI audit letter generation failed: {e}")
         return _mock_audit_letter(findings)
@@ -414,18 +400,8 @@ Return structured JSON:
 
 async def analyze_report(report_text: str, claims_data: dict) -> dict:
     try:
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": REPORT_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Analyze this PBM report against claims data:\n\nReport:\n{report_text[:6000]}\n\nClaims Summary:\n{json.dumps(claims_data, indent=2)[:4000]}"}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-            max_tokens=3000,
-        )
-        return json.loads(response.choices[0].message.content)
+        result = await _generate(REPORT_SYSTEM_PROMPT, f"Analyze this PBM report against claims data:\n\nReport:\n{report_text[:6000]}\n\nClaims Summary:\n{json.dumps(claims_data, indent=2)[:4000]}", 3000)
+        return json.loads(result)
     except Exception as e:
         print(f"AI report analysis failed: {e}")
         return {
