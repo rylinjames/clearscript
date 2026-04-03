@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """
 RocketRide Pipeline Service for ClearScript.
 Runs PBM contract analysis through a multi-stage AI pipeline:
@@ -59,7 +61,7 @@ async def run_contract_pipeline(contract_text: str) -> dict:
                 raise RuntimeError(f"Unexpected response type: {type(response)}")
 
     except Exception as e:
-        print(f"RocketRide pipeline failed ({e}), falling back to direct Gemini API")
+        logger.warning(f"RocketRide pipeline failed ({e}), falling back to direct Gemini API")
         # Fall back to direct Gemini call
         from services.ai_service import analyze_contract
         return await analyze_contract(contract_text)

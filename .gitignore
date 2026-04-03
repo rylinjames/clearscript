@@ -1,5 +1,11 @@
 .env
+.env.local
 __pycache__/
 *.pyc
 node_modules/
 .next/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+backend/.venv/

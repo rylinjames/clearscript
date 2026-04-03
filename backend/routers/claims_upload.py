@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """
 Claims CSV Upload Router — allows employers to upload real pharmacy claims data.
 Uploaded claims replace synthetic data for all analysis endpoints.
@@ -11,6 +13,7 @@ from typing import List, Dict, Any
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from services.data_service import set_claims_data, reset_claims_data, get_claims_status, get_claims
+from services.db_service import save_claims, clear_claims as db_clear_claims, load_latest_claims
 
 router = APIRouter(prefix="/api/claims", tags=["Claims Upload"])
 
@@ -151,6 +154,12 @@ async def upload_claims(file: UploadFile = File(...)):
 
     set_claims_data(claims, info)
 
+    # Persist to SQLite so data survives server restarts
+    try:
+        save_claims(file.filename, claims)
+    except Exception as e:
+        logger.warning(f"Failed to persist claims to SQLite: {e}")
+
     return {
         "status": "success",
         "message": f"Successfully uploaded {len(claims)} claims from {file.filename}",
@@ -175,8 +184,27 @@ async def claims_status():
 async def reset_claims():
     """Reset back to synthetic/sample data."""
     reset_claims_data()
+    try:
+        db_clear_claims()
+    except Exception:
+        pass
     return {
         "status": "success",
         "message": "Claims data reset to synthetic sample data.",
         "claims_count": len(get_claims()),
     }
+
+
+async def restore_persisted_claims():
+    """Restore last uploaded claims from SQLite if available. Call from app startup."""
+    try:
+        saved = load_latest_claims()
+        if saved and saved["claims"]:
+            set_claims_data(saved["claims"], {
+                "filename": saved["filename"],
+                "uploaded_at": saved["upload_date"],
+                "restored_from_db": True,
+            })
+            logger.info(f"Restored {saved['claims_count']} claims from SQLite ({saved['filename']})")
+    except Exception as e:
+        logger.debug(f"No persisted claims to restore: {e}")

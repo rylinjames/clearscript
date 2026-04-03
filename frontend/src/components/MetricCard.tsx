@@ -11,24 +11,20 @@ interface MetricCardProps {
 
 const colorMap = {
   blue: {
-    bg: "bg-blue-50",
-    icon: "bg-blue-100 text-blue-600",
-    trend: "text-blue-600",
+    icon: "bg-primary-50 text-primary-600",
+    trend: "text-gray-400",
   },
   green: {
-    bg: "bg-emerald-50",
-    icon: "bg-emerald-100 text-emerald-600",
+    icon: "bg-emerald-50 text-emerald-600",
     trend: "text-emerald-600",
   },
   red: {
-    bg: "bg-red-50",
-    icon: "bg-red-100 text-red-600",
-    trend: "text-red-600",
+    icon: "bg-red-50 text-red-600",
+    trend: "text-red-500",
   },
   amber: {
-    bg: "bg-amber-50",
-    icon: "bg-amber-100 text-amber-600",
-    trend: "text-amber-600",
+    icon: "bg-amber-50 text-amber-600",
+    trend: "text-gray-400",
   },
 };
 
@@ -37,29 +33,24 @@ export default function MetricCard({
   label,
   value,
   trend,
-  trendUp,
   color = "blue",
 }: MetricCardProps) {
   const c = colorMap[color];
 
   return (
-    <div className={`rounded-xl border border-gray-200 ${c.bg} p-6`}>
-      <div className="flex items-center justify-between">
-        <div className={`rounded-lg p-2.5 ${c.icon}`}>
-          <Icon className="w-5 h-5" />
+    <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] transition-shadow duration-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className={`rounded-lg p-2 ${c.icon}`}>
+          <Icon className="w-4 h-4" />
         </div>
         {trend && (
-          <span
-            className={`text-sm font-medium ${
-              trendUp ? "text-emerald-600" : "text-red-500"
-            }`}
-          >
-            {trendUp ? "\u2191" : "\u2193"} {trend}
+          <span className={`text-xs font-medium ${c.trend}`}>
+            {trend}
           </span>
         )}
       </div>
-      <p className="mt-4 text-2xl font-bold text-gray-900">{value}</p>
-      <p className="mt-1 text-sm text-gray-500">{label}</p>
+      <p className="text-2xl font-bold text-gray-900 tracking-tight">{value}</p>
+      <p className="mt-0.5 text-sm text-gray-400">{label}</p>
     </div>
   );
 }

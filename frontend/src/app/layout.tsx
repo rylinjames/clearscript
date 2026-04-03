@@ -1,11 +1,20 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { ToastProvider } from "@/components/Toast";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
-  title: "ClearScript — PBM Disclosure Audit Engine",
+  title: "ClearScript — PBM Audit, Simplified",
   description:
-    "Enterprise PBM contract audit, disclosure analysis, and compliance tracking.",
+    "AI-powered PBM contract analysis, disclosure auditing, and compliance tracking for self-insured employers.",
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({
@@ -14,12 +23,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="bg-gray-50 text-gray-900 antialiased">
-        <Sidebar />
-        <main className="ml-64 min-h-screen">
-          <div className="max-w-7xl mx-auto px-8 py-8">{children}</div>
-        </main>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <body className="bg-[#fafafa] text-gray-900 antialiased font-sans">
+        <ClerkProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

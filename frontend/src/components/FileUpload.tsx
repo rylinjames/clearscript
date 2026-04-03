@@ -51,10 +51,10 @@ export default function FileUpload({
       onDrop={handleDrop}
       className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors cursor-pointer ${
         dragOver
-          ? "border-[#1e3a5f] bg-blue-50"
+          ? "border-primary-600 bg-blue-50"
           : selectedFile
           ? "border-emerald-400 bg-emerald-50"
-          : "border-gray-300 bg-gray-50 hover:border-[#1e3a5f] hover:bg-blue-50/50"
+          : "border-gray-300 bg-gray-50 hover:border-primary-600 hover:bg-blue-50/50"
       }`}
     >
       <label className="cursor-pointer flex flex-col items-center gap-3">

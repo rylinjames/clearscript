@@ -1,16 +1,19 @@
 interface ScoreCircleProps {
   score: number;
   maxScore?: number;
-  size?: number;
+  size?: number | "sm" | "md" | "lg";
   label?: string;
 }
+
+const SIZE_MAP: Record<string, number> = { sm: 100, md: 140, lg: 180 };
 
 export default function ScoreCircle({
   score,
   maxScore = 100,
-  size = 140,
+  size: rawSize = 140,
   label = "Score",
 }: ScoreCircleProps) {
+  const size = typeof rawSize === "string" ? (SIZE_MAP[rawSize] || 140) : rawSize;
   const pct = Math.min((score / maxScore) * 100, 100);
   const radius = (size - 16) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -37,6 +40,8 @@ export default function ScoreCircle({
           className="transform -rotate-90"
           width={size}
           height={size}
+          role="img"
+          aria-label={`${label}: ${score}%`}
         >
           <circle
             cx={size / 2}

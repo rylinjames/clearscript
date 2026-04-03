@@ -6,3 +6,5 @@ httpx==0.28.1
 python-multipart==0.0.20
 google-genai>=1.0.0
 rocketride>=1.0.0
+pdfplumber>=0.11.0
+aiosqlite>=0.20.0

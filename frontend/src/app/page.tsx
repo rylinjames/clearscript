@@ -1,141 +1,231 @@
 "use client";
 
 import Link from "next/link";
-import MetricCard from "@/components/MetricCard";
-import StatusBadge from "@/components/StatusBadge";
+import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
 import {
-  DollarSign,
   ShieldCheck,
-  ClipboardList,
-  CalendarClock,
   FileText,
   Search,
-  TrendingUp,
-  Mail,
-  MapPin,
-  Pill,
-  BarChart3,
+  CheckCircle2,
   ArrowRight,
+  Zap,
+  Lock,
+  BarChart3,
 } from "lucide-react";
 
-const quickActions = [
-  { href: "/contracts", label: "Upload Contract", icon: FileText, color: "bg-blue-600" },
-  { href: "/disclosure", label: "Analyze Disclosure", icon: Search, color: "bg-indigo-600" },
-  { href: "/reports", label: "Audit Reports", icon: ClipboardList, color: "bg-violet-600" },
-  { href: "/rebates", label: "Track Rebates", icon: DollarSign, color: "bg-emerald-600" },
-  { href: "/spread", label: "Detect Spread", icon: TrendingUp, color: "bg-amber-600" },
-  { href: "/audit", label: "Generate Audit", icon: Mail, color: "bg-rose-600" },
-  { href: "/network", label: "Network Check", icon: MapPin, color: "bg-teal-600" },
-  { href: "/formulary", label: "Formulary Scan", icon: Pill, color: "bg-purple-600" },
-  { href: "/benchmarks", label: "Benchmarks", icon: BarChart3, color: "bg-cyan-600" },
-  { href: "/compliance", label: "Compliance", icon: CalendarClock, color: "bg-orange-600" },
-];
-
-const recentActivity = [
-  { time: "2 hours ago", text: "Contract audit completed for Acme Corp PBM agreement", type: "good" as const },
-  { time: "5 hours ago", text: "Spread pricing alert: $1.2M excess spread detected in Q4 claims", type: "critical" as const },
-  { time: "Yesterday", text: "Rebate passthrough analysis showed 12% leakage for OptumRx", type: "warning" as const },
-  { time: "Yesterday", text: "Compliance deadline: CMS MLR reporting due in 28 days", type: "warning" as const },
-  { time: "2 days ago", text: "Network adequacy scan passed for 94% of zip codes", type: "good" as const },
-  { time: "3 days ago", text: "Formulary change detected: 14 brand-to-brand swaps flagged", type: "critical" as const },
-];
-
-export default function Dashboard() {
+export default function LandingPage() {
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">
-          Overview of your PBM audit and compliance posture
+    <div className="min-h-screen">
+      {/* ─── Nav ─── */}
+      <nav className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <ShieldCheck className="w-7 h-7 text-emerald-500" />
+          <span className="text-lg font-bold text-gray-900 tracking-tight">ClearScript</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <Show when="signed-out">
+            <SignInButton mode="modal">
+              <button className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-4 py-2">
+                Sign in
+              </button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <button className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors px-4 py-2 rounded-lg">
+                Get Started
+              </button>
+            </SignUpButton>
+          </Show>
+          <Show when="signed-in">
+            <Link
+              href="/dashboard"
+              className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors px-4 py-2 rounded-lg"
+            >
+              Open Dashboard
+            </Link>
+          </Show>
+        </div>
+      </nav>
+
+      {/* ─── Hero ─── */}
+      <section className="max-w-4xl mx-auto px-6 pt-20 pb-16 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium mb-6">
+          <Zap className="w-3 h-3" />
+          HR 7148 compliance tools — ready for July 2026
+        </div>
+
+        <h1 className="text-5xl sm:text-6xl font-bold text-gray-900 tracking-tight leading-[1.1]">
+          PBM audit,<br />simplified.
+        </h1>
+
+        <p className="text-lg text-gray-500 mt-6 max-w-xl mx-auto leading-relaxed">
+          Upload your PBM contract. Get an AI-powered compliance analysis with risk scoring, audit rights grading, and a ready-to-send audit letter — in under 60 seconds.
         </p>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <MetricCard
-          icon={DollarSign}
-          label="Total Savings Identified"
-          value="$4.2M"
-          trend="18% vs last quarter"
-          trendUp={true}
-          color="green"
-        />
-        <MetricCard
-          icon={ShieldCheck}
-          label="Compliance Score"
-          value="87%"
-          trend="3% improvement"
-          trendUp={true}
-          color="blue"
-        />
-        <MetricCard
-          icon={ClipboardList}
-          label="Active Audits"
-          value="12"
-          trend="4 new this month"
-          trendUp={true}
-          color="amber"
-        />
-        <MetricCard
-          icon={CalendarClock}
-          label="Upcoming Deadlines"
-          value="5"
-          trend="2 within 30 days"
-          trendUp={false}
-          color="red"
-        />
-      </div>
+        <div className="flex items-center justify-center gap-4 mt-10">
+          <Show when="signed-out">
+            <SignUpButton mode="modal">
+              <button className="inline-flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors shadow-sm">
+                Start Free
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </SignUpButton>
+          </Show>
+          <Show when="signed-in">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors shadow-sm"
+            >
+              Open Dashboard
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </Show>
+          <Link
+            href="#how-it-works"
+            className="px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            See how it works
+          </Link>
+        </div>
+      </section>
 
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Quick Actions
+      {/* ─── Social Proof ─── */}
+      <section className="max-w-4xl mx-auto px-6 pb-16">
+        <div className="flex items-center justify-center gap-8 text-sm text-gray-400">
+          <span>Built on real CMS data</span>
+          <span className="w-1 h-1 rounded-full bg-gray-300" />
+          <span>388K+ drug prices</span>
+          <span className="w-1 h-1 rounded-full bg-gray-300" />
+          <span>Powered by Gemini AI</span>
+        </div>
+      </section>
+
+      {/* ─── How it Works ─── */}
+      <section id="how-it-works" className="max-w-5xl mx-auto px-6 py-20">
+        <h2 className="text-3xl font-bold text-gray-900 text-center tracking-tight mb-4">
+          Three steps to a defensible audit
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {quickActions.map((action) => {
-            const Icon = action.icon;
+        <p className="text-gray-500 text-center max-w-lg mx-auto mb-14">
+          Upload your documents. AI does the analysis. You get a report your CFO can act on.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {[
+            {
+              step: "1",
+              icon: FileText,
+              title: "Upload Contract",
+              desc: "Upload your PBM contract PDF. AI extracts rebate terms, spread pricing, audit rights, MAC pricing, termination provisions, and gag clauses.",
+            },
+            {
+              step: "2",
+              icon: Search,
+              title: "AI Analysis",
+              desc: "Get a risk score (0-100), 11-point audit rights scorecard, compliance flags by severity, and identification of narrow rebate definitions.",
+            },
+            {
+              step: "3",
+              icon: BarChart3,
+              title: "Export Report",
+              desc: "Download a branded PDF report with executive summary, findings, and a draft audit letter citing ERISA, CAA, and DOL provisions.",
+            },
+          ].map((item) => {
+            const Icon = item.icon;
             return (
-              <Link
-                key={action.href}
-                href={action.href}
-                className="flex flex-col items-center gap-2 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-[#1e3a5f]/30 transition-all group"
+              <div
+                key={item.step}
+                className="relative flex flex-col p-7 bg-white rounded-2xl border border-gray-200/60 shadow-[var(--shadow-card)]"
               >
-                <div
-                  className={`${action.color} text-white rounded-lg p-2.5 group-hover:scale-110 transition-transform`}
-                >
-                  <Icon className="w-5 h-5" />
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-50 text-primary-600 text-sm font-bold">
+                    {item.step}
+                  </span>
+                  <Icon className="w-5 h-5 text-gray-400" />
                 </div>
-                <span className="text-xs font-medium text-gray-700 text-center">
-                  {action.label}
-                </span>
-              </Link>
+                <h3 className="text-base font-semibold text-gray-900 mb-2">{item.title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{item.desc}</p>
+              </div>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Recent Activity
-          </h2>
-          <Link
-            href="/reports"
-            className="text-sm text-[#1e3a5f] hover:underline flex items-center gap-1"
-          >
-            View all <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-        <div className="divide-y divide-gray-100">
-          {recentActivity.map((item, i) => (
-            <div key={i} className="flex items-start gap-4 py-3">
-              <span className="text-xs text-gray-400 w-24 flex-shrink-0 pt-0.5">
-                {item.time}
-              </span>
-              <p className="text-sm text-gray-700 flex-1">{item.text}</p>
-              <StatusBadge status={item.type} />
+      {/* ─── What You Get ─── */}
+      <section className="max-w-5xl mx-auto px-6 py-20">
+        <h2 className="text-3xl font-bold text-gray-900 text-center tracking-tight mb-14">
+          What the report covers
+        </h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[
+            "Rebate passthrough percentage and definition analysis",
+            "Spread pricing detection and prohibition status",
+            "11-point audit rights scorecard (FOUND / MISSING)",
+            "Formulary change notification terms",
+            "MAC pricing transparency assessment",
+            "Termination provisions and early exit fees",
+            "Gag clause and confidentiality restrictions",
+            "Compliance flags with severity (HIGH / MEDIUM / LOW)",
+            "Plan document cross-reference (SBC/SPD/EOC)",
+            "Draft audit request letter with legal citations",
+            "Compliance deadline tracker (HR 7148, DOL, state bills)",
+            "Downloadable PDF report for board presentation",
+          ].map((item) => (
+            <div key={item} className="flex items-start gap-3 py-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+              <span className="text-sm text-gray-700">{item}</span>
             </div>
           ))}
         </div>
-      </div>
+      </section>
+
+      {/* ─── Trust ─── */}
+      <section className="max-w-4xl mx-auto px-6 py-20">
+        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-[var(--shadow-card)] p-10 text-center">
+          <Lock className="w-8 h-8 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Your data stays yours</h3>
+          <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
+            ClearScript works from publicly available CMS data sources. Your uploaded contracts are processed by AI and never stored beyond your session. We don&apos;t use confidential client data unless you upload it yourself.
+          </p>
+        </div>
+      </section>
+
+      {/* ─── CTA ─── */}
+      <section className="max-w-4xl mx-auto px-6 py-20 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight mb-4">
+          Ready to audit your PBM contract?
+        </h2>
+        <p className="text-gray-500 mb-8">
+          Free to start. No credit card required.
+        </p>
+        <Show when="signed-out">
+          <SignUpButton mode="modal">
+            <button className="inline-flex items-center gap-2 px-8 py-3.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors shadow-sm">
+              Get Started Free
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </SignUpButton>
+        </Show>
+        <Show when="signed-in">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 px-8 py-3.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors shadow-sm"
+          >
+            Open Dashboard
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </Show>
+      </section>
+
+      {/* ─── Footer ─── */}
+      <footer className="max-w-6xl mx-auto px-6 py-8 border-t border-gray-200/60">
+        <div className="flex items-center justify-between text-xs text-gray-400">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            <span>ClearScript</span>
+          </div>
+          <span>&copy; 2026 Hikaflow, Inc.</span>
+        </div>
+      </footer>
     </div>
   );
 }

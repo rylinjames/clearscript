@@ -1,5 +1,5 @@
 """
-Google Gemini integration for ClearScript.
+OpenAI integration for ClearScript.
 Provides AI-powered contract analysis, disclosure review, audit letter generation, and report analysis.
 Falls back to realistic mock data if the API call fails so the demo never breaks.
 """
@@ -7,71 +7,90 @@ Falls back to realistic mock data if the API call fails so the demo never breaks
 import os
 import json
 import asyncio
+import logging
+import random
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
-from google import genai
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 # Load .env from project root (one level up from backend/)
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 _client = None
-MODEL = "gemini-2.5-flash"
+_client_lock = threading.Lock()
+MODEL = "gpt-5.4-mini"
 
 def _get_client():
     global _client
     if _client is None:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not set")
-        _client = genai.Client(api_key=api_key)
+        with _client_lock:
+            if _client is None:
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    logger.warning("OPENAI_API_KEY not set — AI features will use mock data")
+                    raise ValueError("OPENAI_API_KEY not set")
+                _client = OpenAI(api_key=api_key)
+                logger.info("OpenAI client initialized")
     return _client
 
 async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000) -> str:
-    """Run Gemini generation in a thread to keep it async-compatible."""
+    """Run OpenAI generation in a thread to keep it async-compatible."""
     client = _get_client()
     def _call():
-        response = client.models.generate_content(
+        response = client.chat.completions.create(
             model=MODEL,
-            contents=f"{system_prompt}\n\n{user_prompt}",
-            config={
-                "response_mime_type": "application/json",
-                "temperature": 0.2,
-                "max_output_tokens": max_tokens,
-            },
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=max_tokens,
         )
-        text = response.text
-        # Clean up common Gemini JSON issues
+        text = response.choices[0].message.content
         if text:
             text = text.strip()
-            # Remove markdown code fences if present
             if text.startswith("```"):
                 text = text.split("\n", 1)[-1]
                 if text.endswith("```"):
                     text = text[:-3].strip()
         return text
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)
+        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=30.0)
     except asyncio.TimeoutError:
-        raise TimeoutError("Gemini API call timed out after 25 seconds")
+        raise TimeoutError("OpenAI API call timed out after 30 seconds")
 
 # ─── Contract Analysis ──────────────────────────────────────────────────────────
 
 CONTRACT_SYSTEM_PROMPT = """You are a PBM contract analyst for employer health plan sponsors.
 Analyze the provided PBM contract text and extract key terms. Return valid JSON with exactly this structure:
 
-{"rebate_passthrough": {"found": true, "percentage": "85% of eligible rebates", "details": "description of rebate terms"}, "spread_pricing": {"found": true, "caps": "No explicit caps found", "details": "description of spread pricing terms"}, "formulary_clauses": {"found": true, "change_notification_days": 60, "details": "description of formulary management terms"}, "audit_rights": {"found": true, "frequency": "Once per year", "scope": "Claims data only", "details": "description of audit rights"}, "mac_pricing": {"found": true, "update_frequency": "Monthly", "appeal_rights": false, "details": "description of MAC pricing"}, "termination_provisions": {"found": true, "notice_days": 180, "penalties": "Liquidated damages", "details": "description of termination terms"}, "gag_clauses": {"found": true, "details": "description of any gag clauses"}, "compliance_flags": [{"issue": "description of compliance issue", "severity": "high", "recommendation": "what to do about it"}], "overall_risk_score": 78, "summary": "overall assessment of the contract"}
+{"rebate_passthrough": {"found": true, "percentage": "85% of eligible rebates", "details": "description of rebate terms"}, "spread_pricing": {"found": true, "caps": "No explicit caps found", "details": "description of spread pricing terms"}, "formulary_clauses": {"found": true, "change_notification_days": 60, "details": "description of formulary management terms"}, "audit_rights": {"found": true, "frequency": "Once per year", "scope": "Claims data only", "details": "description of audit rights", "checklist": {"ndc_level_audit": {"found": false, "details": "Whether audit rights extend to NDC-level claim detail (not just J-code summaries)"}, "annual_audit_right": {"found": false, "details": "Whether employer has the right to audit at least once per contract year"}, "lookback_36_months": {"found": false, "details": "Whether audit lookback period extends to 36 months (vs shorter windows PBMs prefer)"}, "notice_90_days_or_less": {"found": false, "details": "Notice period required before audit — 90 days or less is acceptable, longer favors PBM"}, "data_delivery_30_days": {"found": false, "details": "Whether PBM must deliver requested audit data within 30 days of request"}, "finding_response_30_days": {"found": false, "details": "Whether PBM must respond to audit findings within 30 days"}, "financial_guarantees_turnaround": {"found": false, "details": "Whether there are financial penalties for PBM missing audit turnaround deadlines"}, "error_correction": {"found": false, "details": "Whether PBM is required to correct errors found during audit and issue credits"}, "manufacturer_contract_access": {"found": false, "details": "Whether employer can access up to 12 manufacturer rebate contracts for verification"}, "survival_post_termination_3yr": {"found": false, "details": "Whether audit rights survive contract termination for at least 3 years"}, "no_audit_cost_to_plan": {"found": false, "details": "Whether audit costs are borne by PBM (not charged back to plan sponsor)"}}}, "mac_pricing": {"found": true, "update_frequency": "Monthly", "appeal_rights": false, "details": "description of MAC pricing"}, "termination_provisions": {"found": true, "notice_days": 180, "penalties": "Liquidated damages", "details": "description of termination terms"}, "gag_clauses": {"found": true, "details": "description of any gag clauses"}, "eligible_rebate_definition": {"found": true, "definition_text": "exact contract language defining eligible rebates", "includes_admin_fees": false, "includes_volume_bonuses": false, "includes_price_protection": false, "narrow_definition_flag": true, "details": "CRITICAL: This is the single most important clause. PBMs define 'eligible rebates' narrowly to exclude admin fees, volume bonuses, and price protection rebates — reducing effective passthrough from the stated percentage. Flag if the definition excludes any of these categories."}, "dispute_resolution": {"found": true, "mechanism": "arbitration", "details": "Whether disputes go to mediation, arbitration, or litigation. Mediation is non-binding and weakest for the plan sponsor. Arbitration is binding but private (PBM-favorable). Litigation in court is strongest for the plan sponsor because it allows discovery and public record. Also note venue/jurisdiction requirements."}, "statistical_extrapolation_rights": {"found": false, "details": "Whether the employer can extrapolate error rates found in a sample audit to the full claims universe. PBMs fight hard against this because a 3% error rate in a sample of 1,000 claims can be applied to 500,000 claims. Without this right, the employer can only recover errors found in the specific claims audited."}, "compliance_flags": [{"issue": "description of compliance issue", "severity": "high", "recommendation": "what to do about it"}], "overall_risk_score": 78, "summary": "overall assessment of the contract"}
 
 IMPORTANT: overall_risk_score MUST be an integer 0-100. severity MUST be "high", "medium", or "low". All string values must use double quotes. Be thorough and flag terms unfavorable to the plan sponsor.
+
+EXTRACTION PRIORITIES (from real state PBM contract audits):
+1. ELIGIBLE REBATE DEFINITION — The #1 most impactful clause. If "eligible rebates" excludes admin fees, volume bonuses, or price protection, the stated passthrough percentage is misleading. A contract promising "100% of eligible rebates" can deliver under 60% of actual manufacturer payments.
+2. AUDIT RIGHTS CHECKLIST — Check all 11 items listed in the audit_rights.checklist structure. Most PBM contracts fail 6-8 of these items.
+3. STATISTICAL EXTRAPOLATION — Without this right, audits have limited financial recovery potential.
+4. DISPUTE RESOLUTION — Determines whether audit findings can actually be enforced. Arbitration with PBM-selected arbitrators is a red flag.
 """
 
 async def analyze_contract(text: str) -> dict:
     try:
         result = await _generate(CONTRACT_SYSTEM_PROMPT, f"Analyze this PBM contract:\n\n{text[:12000]}", 3000)
-        return json.loads(result)
+        parsed = json.loads(result)
+        parsed["_generated_by"] = "ai"
+        return parsed
     except Exception as e:
-        print(f"AI contract analysis failed: {e}")
-        return _mock_contract_analysis()
+        logger.warning(f"AI contract analysis failed, using mock: {e}")
+        result = _mock_contract_analysis()
+        result["_generated_by"] = "mock"
+        return result
 
 def _mock_contract_analysis() -> dict:
     return {
@@ -94,7 +113,20 @@ def _mock_contract_analysis() -> dict:
             "found": True,
             "frequency": "Once per contract year",
             "scope": "Limited to claims data only",
-            "details": "Audit limited to claims data — does not include rebate contracts, pharmacy reimbursement rates, or spread pricing data. 90-day advance notice required. PBM selects audit firm from approved list."
+            "details": "Audit limited to claims data — does not include rebate contracts, pharmacy reimbursement rates, or spread pricing data. 90-day advance notice required. PBM selects audit firm from approved list.",
+            "checklist": {
+                "ndc_level_audit": {"found": False, "details": "Contract does not guarantee NDC-level audit access — only J-code summaries available."},
+                "annual_audit_right": {"found": True, "details": "Once per contract year, but PBM controls scheduling."},
+                "lookback_36_months": {"found": False, "details": "Lookback limited to 12 months — well below the recommended 36."},
+                "notice_90_days_or_less": {"found": True, "details": "90-day advance notice required (at the acceptable threshold)."},
+                "data_delivery_30_days": {"found": False, "details": "Contract specifies 60-day data delivery window — double the recommended 30 days."},
+                "finding_response_30_days": {"found": False, "details": "No timeline specified for PBM response to audit findings."},
+                "financial_guarantees_turnaround": {"found": False, "details": "No financial penalties for PBM missing audit deadlines."},
+                "error_correction": {"found": True, "details": "PBM must correct pricing errors, but no timeline for credits."},
+                "manufacturer_contract_access": {"found": False, "details": "No right to review manufacturer rebate contracts."},
+                "survival_post_termination_3yr": {"found": False, "details": "Audit rights terminate with the contract — no survival clause."},
+                "no_audit_cost_to_plan": {"found": False, "details": "Plan sponsor bears all audit costs."},
+            },
         },
         "mac_pricing": {
             "found": True,
@@ -111,6 +143,24 @@ def _mock_contract_analysis() -> dict:
         "gag_clauses": {
             "found": True,
             "details": "Section 14.2 contains confidentiality provisions that may restrict plan sponsor from sharing pricing data with consultants or other vendors. Potential CAA violation."
+        },
+        "eligible_rebate_definition": {
+            "found": True,
+            "definition_text": "'Eligible Rebates' means rebates received by PBM from pharmaceutical manufacturers based on formulary placement and utilization of covered drugs, excluding administrative fees, service fees, volume-based incentives, and price protection payments.",
+            "includes_admin_fees": False,
+            "includes_volume_bonuses": False,
+            "includes_price_protection": False,
+            "narrow_definition_flag": True,
+            "details": "CRITICAL: The contract defines 'eligible rebates' to exclude admin fees, volume bonuses, and price protection — three major categories of manufacturer payments. The stated 85% passthrough applies only to this narrow definition. Effective passthrough of total manufacturer payments is estimated at 55-65%."
+        },
+        "dispute_resolution": {
+            "found": True,
+            "mechanism": "arbitration",
+            "details": "Section 18.3 requires binding arbitration with an arbitrator selected from a PBM-approved panel. Venue is PBM's home jurisdiction. No right to discovery beyond document production. This is PBM-favorable — litigation in court would allow broader discovery and public accountability."
+        },
+        "statistical_extrapolation_rights": {
+            "found": False,
+            "details": "Contract is silent on statistical extrapolation. Without this right, the employer can only recover errors found in specifically audited claims, not extrapolate error rates to the full claims universe. This dramatically limits audit recovery potential."
         },
         "compliance_flags": [
             {"issue": "Gag clause detected — potential CAA 2021 Section 201 violation", "severity": "high", "recommendation": "Require immediate removal of Section 14.2 confidentiality restrictions on pricing data sharing."},
@@ -179,17 +229,20 @@ DOL_REQUIRED_ITEMS = [
 async def analyze_disclosure(text: str) -> dict:
     try:
         result = await _generate(DISCLOSURE_SYSTEM_PROMPT, f"Analyze this PBM disclosure document for DOL compliance:\n\n{text[:12000]}", 4000)
-        return json.loads(result)
+        parsed = json.loads(result)
+        parsed["_generated_by"] = "ai"
+        return parsed
     except Exception as e:
-        print(f"AI disclosure analysis failed: {e}")
-        return _mock_disclosure_analysis()
+        logger.warning(f"AI disclosure analysis failed, using mock: {e}")
+        result = _mock_disclosure_analysis()
+        result["_generated_by"] = "mock"
+        return result
 
 def _mock_disclosure_analysis() -> dict:
     items = []
     found_count = 0
     for name, category, required in DOL_REQUIRED_ITEMS:
         # Simulate partial disclosure — some items missing
-        import random
         random.seed(hash(name))
         is_found = random.random() > 0.35
         is_complete = is_found and random.random() > 0.25
@@ -256,7 +309,7 @@ async def generate_audit_letter(contract_data: dict, findings: dict) -> dict:
         result = await _generate(AUDIT_LETTER_SYSTEM_PROMPT, f"Generate an audit request letter based on these findings:\n\nContract Analysis:\n{json.dumps(contract_data, indent=2)[:4000]}\n\nAudit Findings:\n{json.dumps(findings, indent=2)[:4000]}", 4000)
         return json.loads(result)
     except Exception as e:
-        print(f"AI audit letter generation failed: {e}")
+        logger.warning(f"AI audit letter generation failed, using mock: {e}")
         return _mock_audit_letter(findings)
 
 def _mock_audit_letter(findings: dict = None) -> dict:
@@ -404,7 +457,7 @@ async def analyze_report(report_text: str, claims_data: dict) -> dict:
         result = await _generate(REPORT_SYSTEM_PROMPT, f"Analyze this PBM report against claims data:\n\nReport:\n{report_text[:6000]}\n\nClaims Summary:\n{json.dumps(claims_data, indent=2)[:4000]}", 3000)
         return json.loads(result)
     except Exception as e:
-        print(f"AI report analysis failed: {e}")
+        logger.warning(f"AI report analysis failed, using mock: {e}")
         return {
             "findings": [
                 {"category": "Rebates", "severity": "high", "finding": "Rebate amounts in report do not match expected values based on claim volume", "evidence": "Report shows aggregate rebates but lacks per-drug breakdown", "recommendation": "Request drug-level rebate detail"},
