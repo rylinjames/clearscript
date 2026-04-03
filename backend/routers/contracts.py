@@ -12,6 +12,7 @@ from services.db_service import save_contract_analysis
 from services.spc_service import parse_spc
 from services.plan_crossref_service import cross_reference_contract_and_plan
 from services.pdf_report_service import generate_contract_report
+from services.training_data_service import save_training_example, get_training_stats
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".docx"}
@@ -229,6 +230,44 @@ async def export_pdf(request: dict):
             "Content-Disposition": f'attachment; filename="ClearScript_Report_{safe_name}.pdf"',
         },
     )
+
+
+@router.post("/feedback")
+async def submit_feedback(request: dict):
+    """
+    Submit corrected analysis for fine-tuning data collection.
+    Call this when a user corrects the AI's output.
+
+    Expects JSON body with:
+    - contract_text: original contract text
+    - original_analysis: the AI's output
+    - corrected_analysis: the human-corrected version
+    - feedback_notes: optional string describing what was wrong
+    - contract_filename: optional filename
+    """
+    contract_text = request.get("contract_text", "")
+    original = request.get("original_analysis", {})
+    corrected = request.get("corrected_analysis", {})
+    notes = request.get("feedback_notes", "")
+    filename = request.get("contract_filename", "")
+
+    if not corrected:
+        raise HTTPException(status_code=400, detail="'corrected_analysis' is required.")
+
+    result = save_training_example(
+        contract_text=contract_text,
+        original_analysis=original,
+        corrected_analysis=corrected,
+        feedback_notes=notes,
+        contract_filename=filename,
+    )
+    return result
+
+
+@router.get("/training-stats")
+async def training_stats():
+    """Check how many training examples have been collected."""
+    return get_training_stats()
 
 
 @router.get("/pipeline-status")

@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 # ─── AI Prompts ────────────────────────────────────────────────────────────────
 
-SPC_PARSE_SYSTEM_PROMPT = """You are a health insurance benefits analyst. Extract structured benefit data from the provided Summary of Plan Coverage (SPC) or Summary of Benefits and Coverage (SBC) document text.
+SPC_PARSE_SYSTEM_PROMPT = """You are a health insurance plan document analyst. Extract structured benefit data from the provided SBC, SPD, or EOC/COC document.
+
+Focus on the fields that matter for PBM contract cross-referencing. Do NOT include AWP comparisons — AWP is what the plan pays, not what the employee pays.
 
 Return valid JSON with exactly this structure:
 
@@ -25,71 +27,49 @@ Return valid JSON with exactly this structure:
     "plan_name": "string or null",
     "carrier": "string or null",
     "effective_date": "string or null",
-    "plan_type": "string or null (e.g. PPO, HMO, HDHP, POS)",
-    "coverage_period": "string or null"
+    "plan_type": "string or null (e.g. PPO, HMO, HDHP, POS)"
   },
   "deductible": {
     "individual_in_network": "string or null (e.g. '$1,500')",
-    "individual_out_of_network": "string or null",
     "family_in_network": "string or null",
-    "family_out_of_network": "string or null",
-    "notes": "string or null (e.g. 'Deductible does not apply to preventive care')"
+    "notes": "string or null"
   },
   "out_of_pocket_maximum": {
     "individual_in_network": "string or null",
-    "individual_out_of_network": "string or null",
-    "family_in_network": "string or null",
-    "family_out_of_network": "string or null",
-    "notes": "string or null"
+    "family_in_network": "string or null"
   },
   "copays": {
-    "pcp_visit": "string or null (e.g. '$25 copay')",
+    "pcp_visit": "string or null",
     "specialist_visit": "string or null",
-    "urgent_care": "string or null",
     "emergency_room": "string or null",
-    "telehealth": "string or null",
-    "mental_health_outpatient": "string or null",
-    "notes": "string or null"
+    "urgent_care": "string or null"
   },
   "coinsurance": {
     "in_network": "string or null (e.g. '80/20 after deductible')",
-    "out_of_network": "string or null",
-    "notes": "string or null"
+    "out_of_network": "string or null"
   },
   "prescription_drugs": {
-    "tier_1_generic": {"copay": "string or null", "mail_order": "string or null"},
-    "tier_2_preferred_brand": {"copay": "string or null", "mail_order": "string or null"},
-    "tier_3_non_preferred": {"copay": "string or null", "mail_order": "string or null"},
-    "tier_4_specialty": {"copay": "string or null", "mail_order": "string or null"},
-    "deductible_applies": "string or null (which tiers require deductible first)",
+    "tier_1_generic": "string or null (e.g. '$10 copay')",
+    "tier_2_preferred_brand": "string or null",
+    "tier_3_non_preferred": "string or null",
+    "tier_4_specialty": "string or null",
+    "deductible_applies": "string or null (which tiers require deductible)",
+    "mail_order_available": "string or null",
     "pbm_name": "string or null",
-    "formulary_name": "string or null",
-    "notes": "string or null"
+    "mandatory_mail_order": "string or null"
   },
-  "hospital_services": {
-    "inpatient": "string or null",
-    "outpatient_surgery": "string or null",
-    "notes": "string or null"
-  },
-  "exclusions_and_limits": [
-    "string — notable exclusion or limitation"
+  "key_exclusions": [
+    "string — only notable Rx-relevant exclusions (e.g. specialty drug restrictions, step therapy, PA requirements)"
   ],
-  "other_benefits": {
-    "preventive_care": "string or null",
-    "lab_work": "string or null",
-    "imaging": "string or null",
-    "rehabilitation": "string or null",
-    "durable_medical_equipment": "string or null"
-  },
   "confidence_score": 85
 }
 
 IMPORTANT:
-- confidence_score MUST be an integer 0-100 reflecting how confident you are in the extraction accuracy.
-- Use null for any field you cannot find in the text. Do not guess or fabricate values.
-- Preserve exact dollar amounts and percentages as written in the document.
-- All string values must use double quotes.
-- Be thorough — these documents are dense and benefits may be described in different sections.
+- confidence_score MUST be an integer 0-100.
+- Use null for any field you cannot find. Do not guess.
+- Preserve exact dollar amounts as written.
+- Focus on Rx-relevant benefits for PBM contract cross-referencing.
+- Do NOT include hospital services, lab work, imaging, rehabilitation, or DME — these are not relevant to PBM analysis.
 """
 
 SPC_COMPARE_SYSTEM_PROMPT = """You are a health insurance benefits analyst comparing two Summary of Plan Coverage (SPC) documents.

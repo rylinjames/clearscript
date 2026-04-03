@@ -44,75 +44,79 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* ─── New User: Clean Hero ─── */}
+      {/* ─── New User: Onboarding ─── */}
       {!loading && !hasContracts && (
-        <div className="pt-12 pb-8">
-          <div className="text-center mb-14 animate-fade-in">
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight leading-tight">
-              PBM audit, simplified.
-            </h1>
-            <p className="text-base text-gray-400 mt-3 max-w-md mx-auto leading-relaxed">
-              Upload your PBM contract and get AI-powered compliance analysis in under 60 seconds.
-            </p>
+        <div className="pt-8 pb-8">
+          <div className="mb-10 animate-fade-in">
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Welcome to ClearScript</h1>
+            <p className="text-gray-400 mt-1">Follow these steps to analyze your PBM contract.</p>
           </div>
 
-          {/* Primary CTA */}
-          <div className="max-w-md mx-auto mb-10 animate-fade-in-d1">
+          {/* Onboarding Steps */}
+          <div className="space-y-4 animate-fade-in-d1">
+            {/* Step 1 */}
             <Link
               href="/contracts"
-              className="group relative flex flex-col items-center p-8 bg-white rounded-2xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:border-primary-300 hover:shadow-[var(--shadow-card-hover)] transition-all duration-200"
+              className="group flex items-start gap-5 p-6 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:border-primary-300 hover:shadow-[var(--shadow-card-hover)] transition-all duration-200"
             >
-              <div className="bg-primary-600 text-white rounded-xl p-4 mb-5 group-hover:scale-105 transition-transform duration-200">
-                <FileText className="w-6 h-6" />
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary-600 text-white flex items-center justify-center text-sm font-bold">
+                1
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload PBM Contract</h3>
-              <p className="text-sm text-gray-400 text-center leading-relaxed">
-                AI extracts terms, scores audit rights, flags compliance risks, and generates your audit letter.
-              </p>
-              <ArrowUpRight className="w-4 h-4 text-gray-200 absolute top-6 right-6 group-hover:text-primary-500 transition-colors" />
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Upload your PBM contract</h3>
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  Upload your PBM services agreement (PDF or text). AI will extract rebate terms, spread pricing, audit rights, formulary clauses, and termination provisions — scored as employer-favorable or PBM-favorable.
+                </p>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-gray-200 group-hover:text-primary-500 transition-colors mt-1" />
             </Link>
-          </div>
 
-          {/* Secondary actions */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-fade-in-d1">
+            {/* Step 2 */}
+            <Link
+              href="/contracts"
+              className="group flex items-start gap-5 p-6 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:border-primary-300 hover:shadow-[var(--shadow-card-hover)] transition-all duration-200"
+            >
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-sm font-bold">
+                2
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Add your plan document</h3>
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  Upload your SBC, SPD, or EOC to cross-reference against the contract. The AI identifies gaps between what the contract promises and what the plan document says.
+                </p>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-gray-200 group-hover:text-primary-500 transition-colors mt-1" />
+            </Link>
+
+            {/* Step 3 */}
             <Link
               href="/disclosure"
-              className="group flex items-center gap-4 p-5 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] hover:border-primary-200 transition-all duration-200"
+              className="group flex items-start gap-5 p-6 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:border-primary-300 hover:shadow-[var(--shadow-card-hover)] transition-all duration-200"
             >
-              <div className="bg-primary-50 rounded-lg p-2.5 group-hover:bg-primary-100 transition-colors duration-200">
-                <Search className="w-4 h-4 text-primary-600" />
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-sm font-bold">
+                3
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Disclosure Analyzer</p>
-                <p className="text-xs text-gray-400">Score against DOL rules</p>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Score your PBM disclosure</h3>
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  Upload your PBM&apos;s semiannual disclosure document. AI checks it against 20 DOL-required items and generates a completeness score with a gap report.
+                </p>
               </div>
+              <ArrowUpRight className="w-4 h-4 text-gray-200 group-hover:text-primary-500 transition-colors mt-1" />
             </Link>
 
-            <Link
-              href="/audit"
-              className="group flex items-center gap-4 p-5 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] hover:border-primary-200 transition-all duration-200"
-            >
-              <div className="bg-primary-50 rounded-lg p-2.5 group-hover:bg-primary-100 transition-colors duration-200">
-                <Mail className="w-4 h-4 text-primary-600" />
+            {/* Step 4 */}
+            <div className="flex items-start gap-5 p-6 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)]">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-sm font-bold">
+                4
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Audit Letter</p>
-                <p className="text-xs text-gray-400">Generate with legal citations</p>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Export your report</h3>
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  Download a branded PDF report with executive summary, risk score, audit rights scorecard, compliance flags, and a draft audit letter — ready for your CFO or board.
+                </p>
               </div>
-            </Link>
-
-            <Link
-              href="/compliance"
-              className="group flex items-center gap-4 p-5 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] hover:border-primary-200 transition-all duration-200"
-            >
-              <div className="bg-primary-50 rounded-lg p-2.5 group-hover:bg-primary-100 transition-colors duration-200">
-                <CalendarClock className="w-4 h-4 text-primary-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Compliance Tracker</p>
-                <p className="text-xs text-gray-400">Federal & state deadlines</p>
-              </div>
-            </Link>
+            </div>
           </div>
 
           {/* Extras */}
