@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { Show, SignInButton, SignUpButton, useAuth } from "@clerk/nextjs";
 import {
   ShieldCheck,
   FileText,
@@ -14,6 +16,20 @@ import {
 } from "lucide-react";
 
 export default function LandingPage() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const router = useRouter();
+
+  // Auto-redirect signed-in users to dashboard
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.push("/dashboard");
+    }
+  }, [isLoaded, isSignedIn, router]);
+
+  // Show nothing while checking auth (prevents flash of landing page)
+  if (!isLoaded || isSignedIn) {
+    return null;
+  }
   return (
     <div className="min-h-screen">
       {/* ─── Nav ─── */}
@@ -95,7 +111,7 @@ export default function LandingPage() {
           <span className="w-1 h-1 rounded-full bg-gray-300" />
           <span>388K+ drug prices</span>
           <span className="w-1 h-1 rounded-full bg-gray-300" />
-          <span>Powered by Gemini AI</span>
+          <span>Powered by AI</span>
         </div>
       </section>
 
