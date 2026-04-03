@@ -852,6 +852,65 @@ export default function ContractsPage() {
             )}
           </div>
 
+          {/* ═══ REDLINE SUGGESTIONS ═══ */}
+          {rawContractAnalysis && (rawContractAnalysis as Record<string, unknown>).redline_suggestions && Array.isArray((rawContractAnalysis as Record<string, unknown>).redline_suggestions) && ((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, string>>).length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
+              <div className="px-6 py-4 border-b border-gray-200 bg-primary-600">
+                <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Recommended Contract Redlines
+                </h3>
+                <p className="text-xs text-primary-200 mt-0.5">Specific language to propose during renegotiation</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, string>>).map((redline, i) => (
+                  <div key={i} className="px-6 py-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-gray-900">{redline.section}</h4>
+                      {redline.impact && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${
+                          redline.impact === "high" ? "bg-red-50 text-red-600 border-red-100" :
+                          redline.impact === "medium" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                          "bg-blue-50 text-blue-600 border-blue-100"
+                        }`}>
+                          {redline.impact.toUpperCase()} IMPACT
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Current language */}
+                    <div className="mb-3">
+                      <p className="text-[11px] font-semibold text-red-500 uppercase tracking-wider mb-1">Current Language (Remove)</p>
+                      <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3">
+                        <p className="text-sm text-red-800 leading-relaxed line-through decoration-red-300">{redline.current_language}</p>
+                      </div>
+                    </div>
+
+                    {/* Suggested language */}
+                    <div className="mb-3">
+                      <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider mb-1">Suggested Language (Add)</p>
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-3">
+                        <p className="text-sm text-emerald-800 leading-relaxed font-medium">{redline.suggested_language}</p>
+                      </div>
+                    </div>
+
+                    {/* Rationale */}
+                    <div className="flex items-start gap-4 text-xs text-gray-500">
+                      <div className="flex-1">
+                        <span className="font-semibold text-gray-700">Why: </span>{redline.rationale}
+                      </div>
+                      {redline.source && (
+                        <div className="flex-shrink-0 text-right">
+                          <span className="font-semibold text-gray-700">Source: </span>{redline.source}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ═══ STEP 2: Plan Document Upload ═══ */}
           <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
             <div className="flex items-center gap-2 mb-4">

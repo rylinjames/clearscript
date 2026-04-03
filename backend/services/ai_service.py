@@ -179,6 +179,16 @@ Return valid JSON with this structure:
     "Specialty channel lock-in + lack of routing rights eliminates employer price competition",
     "Audit scope limits + rebate exclusions prevent discovery of true PBM economics"
   ],
+  "redline_suggestions": [
+    {
+      "section": "Section 5.2 — Eligible Rebate Definition",
+      "current_language": "Exact quote from the contract being analyzed",
+      "suggested_language": "Employer-favorable replacement language",
+      "rationale": "Why this change matters and what it fixes",
+      "source": "Gold-standard state PBM contract language or ERISA best practice",
+      "impact": "high"
+    }
+  ],
   "compliance_flags": [
     {"issue": "description", "severity": "high", "favorability": "pbm_favorable", "recommendation": "what to do"}
   ],
@@ -194,6 +204,44 @@ KEY ANALYSIS RULES:
 5. ECONOMIC LINKAGES: Identify cross-cutting patterns where multiple contract terms combine to create PBM economic advantage (MAC opacity + pass-through, formulary control + rebate definitions, audit limits + rebate exclusions).
 6. ELIGIBLE REBATE DEFINITION: This is the #1 most impactful clause. If it excludes admin fees, volume bonuses, or price protection, the stated passthrough is misleading.
 7. AUDIT RIGHTS CHECKLIST: Check all 11 items. Most PBM contracts fail 6-8.
+8. REDLINE SUGGESTIONS: For EVERY term rated "pbm_favorable", generate a specific redline suggestion with:
+   - The exact current language from the contract (quote it)
+   - Replacement language that shifts the term to employer-favorable
+   - Use these gold-standard templates as your source:
+
+   REBATE DEFINITION: "Eligible Rebates shall include all compensation received by PBM from pharmaceutical manufacturers, including but not limited to base rebates, administrative fees, volume bonuses, price protection payments, market share incentives, data fees, and service fees, regardless of how such payments are characterized by the manufacturer or PBM."
+
+   AUDIT RIGHTS: "The Plan Sponsor or its designee shall have the right to audit annually, with an auditor of its choice, for both claims and rebates, with full cooperation of the selected PBM, the claims, services and pricing and/or rebates, including the manufacturer or aggregator rebate contracts held by the PBM, to verify compliance with all program requirements and contractual guarantees with no additional charge from the PBM."
+
+   AUDIT LOOKBACK: "The Plan Sponsor or its designee shall have the right to audit up to 36 months of claims data at no additional charge from the PBM."
+
+   AUDIT NOTICE: "The Plan Sponsor shall have the right to audit, with an auditor of its choice, at any time provided the Plan Sponsor gives 90-days advance notice."
+
+   DATA DELIVERY: "PBM will provide complete claim files and documentation (i.e., full claim files, financial reconciliation reports, inclusion files, and plan documentation) to the auditor within 30 days of receipt of the audit data request."
+
+   FINDING RESPONSE: "PBM agrees to a 30-day turnaround time to provide the full responses to all of the sample claims and claims audit findings."
+
+   FINANCIAL GUARANTEES: "PBM agrees to financial guarantees for turnaround times for each stage of the audit process."
+
+   ERROR CORRECTION: "PBM will correct any errors that the Plan Sponsor, or its representative, brings to the PBM's attention whether identified by an audit or otherwise."
+
+   MANUFACTURER ACCESS: "The Plan Sponsor or its designee shall have the right to audit up to 12 pharmaceutical manufacturer contracts during an on-site rebate audit."
+
+   POST-TERMINATION: "The Plan Sponsor's right to audit shall survive the termination of the agreement between the parties for a period of 3 years."
+
+   NO COST TO PLAN: "The Plan Sponsor will not be held responsible for time or miscellaneous costs incurred by the PBM in association with any audit process including, all costs associated with provision of data, audit finding response reports, or systems access, provided to the Plan Sponsor or its designee by the PBM during the life of the contract."
+
+   SPREAD PRICING: "PBM shall operate on a pass-through pricing model. The amount billed to Plan Sponsor for each claim shall equal the actual amount reimbursed to the dispensing pharmacy plus a transparent, pre-agreed administrative fee. PBM shall not retain any spread between the plan-billed amount and pharmacy reimbursement."
+
+   TERMINATION: "Either party may terminate this Agreement upon 60 days written notice. No early termination fees, liquidated damages, or penalties shall apply. PBM shall provide transition assistance at no additional cost for 90 days following termination."
+
+   GAG CLAUSE: "Nothing in this Agreement shall restrict Plan Sponsor from disclosing pricing, rebate, or cost data to its benefits consultants, brokers, fiduciary advisors, auditors, or legal counsel. This provision is consistent with CAA 2021 Section 201."
+
+   FORMULARY: "PBM shall not make mid-year changes to formulary tier placement without prior written approval of Plan Sponsor. All formulary changes must be accompanied by clinical justification and 90-day advance notice."
+
+   SPECIALTY CHANNEL: "Plan Sponsor retains the right to designate or approve the specialty pharmacy vendor(s) used for dispensing specialty medications. PBM shall provide transparent pricing for specialty drugs including acquisition cost, dispensing fees, and any channel-specific markups."
+
+   Only generate redlines for terms that are pbm_favorable. Do not generate redlines for employer_favorable or neutral terms.
 """
 
 async def analyze_contract(text: str) -> dict:

@@ -415,10 +415,77 @@ def generate_contract_report(
 
         story.append(Spacer(1, 0.2 * inch))
 
-    # ─── 5. Plan Document Benefits (if provided) ────────────────────────
+    # ─── 5. Recommended Contract Redlines ────────────────────────────────
+
+    redlines = analysis.get("redline_suggestions", []) if isinstance(analysis, dict) else []
+    if redlines:
+        story.append(PageBreak())
+        story.append(Paragraph("5. Recommended Contract Redlines", styles["SectionHeader"]))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=GRAY_200, spaceAfter=12))
+        story.append(Paragraph(
+            "The following redline suggestions provide specific replacement language for PBM-favorable contract terms. "
+            "Language is sourced from gold-standard state PBM contracts and ERISA best practices.",
+            styles["Body"],
+        ))
+        story.append(Spacer(1, 8))
+
+        for i, redline in enumerate(redlines):
+            if not isinstance(redline, dict):
+                continue
+
+            # Section header
+            story.append(Paragraph(
+                f"<b>{redline.get('section', f'Redline {i+1}')}</b>"
+                f"{'  [' + redline.get('impact', '').upper() + ' IMPACT]' if redline.get('impact') else ''}",
+                styles["SubHeader"],
+            ))
+
+            # Current language (strikethrough effect via red color)
+            current = redline.get("current_language", "")
+            if current:
+                story.append(Paragraph("<b>REMOVE:</b>", ParagraphStyle("RedLabel", fontName="Helvetica-Bold", fontSize=8, textColor=RED)))
+                current_table = Table([[Paragraph(current, ParagraphStyle("RedText", fontName="Helvetica", fontSize=9, textColor=RED, leading=13))]])
+                current_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#fecaca")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ]))
+                story.append(current_table)
+                story.append(Spacer(1, 4))
+
+            # Suggested language
+            suggested = redline.get("suggested_language", "")
+            if suggested:
+                story.append(Paragraph("<b>REPLACE WITH:</b>", ParagraphStyle("GreenLabel", fontName="Helvetica-Bold", fontSize=8, textColor=EMERALD)))
+                suggested_table = Table([[Paragraph(suggested, ParagraphStyle("GreenText", fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#065f46"), leading=13))]])
+                suggested_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#ecfdf5")),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#a7f3d0")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ]))
+                story.append(suggested_table)
+                story.append(Spacer(1, 4))
+
+            # Rationale
+            rationale = redline.get("rationale", "")
+            source = redline.get("source", "")
+            if rationale:
+                story.append(Paragraph(f"<b>Why:</b> {rationale}", styles["SmallText"]))
+            if source:
+                story.append(Paragraph(f"<b>Source:</b> {source}", styles["SmallText"]))
+
+            story.append(Spacer(1, 12))
+
+    # ─── 6. Plan Document Benefits (if provided) ────────────────────────
 
     if plan_benefits and isinstance(plan_benefits, dict):
-        section_num = 5
+        section_num = 6
         story.append(PageBreak())
         story.append(Paragraph(f"{section_num}. Plan Document Benefits", styles["SectionHeader"]))
         story.append(HRFlowable(width="100%", thickness=0.5, color=GRAY_200, spaceAfter=12))
@@ -470,7 +537,7 @@ def generate_contract_report(
 
     if cross_reference and isinstance(cross_reference, dict):
         story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph("6. Contract vs Plan Document Cross-Reference", styles["SectionHeader"]))
+        story.append(Paragraph("7. Contract vs Plan Document Cross-Reference", styles["SectionHeader"]))
         story.append(HRFlowable(width="100%", thickness=0.5, color=GRAY_200, spaceAfter=12))
 
         alignment = cross_reference.get("overall_alignment_score", 0)
