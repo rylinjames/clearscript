@@ -66,18 +66,134 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000
 
 # ─── Contract Analysis ──────────────────────────────────────────────────────────
 
-CONTRACT_SYSTEM_PROMPT = """You are a PBM contract analyst for employer health plan sponsors.
-Analyze the provided PBM contract text and extract key terms. Return valid JSON with exactly this structure:
+CONTRACT_SYSTEM_PROMPT = """You are a PBM contract analyst advising employer health plan sponsors. Your job is to assess whether each contract provision favors the EMPLOYER or the PBM.
 
-{"rebate_passthrough": {"found": true, "percentage": "85% of eligible rebates", "details": "description of rebate terms"}, "spread_pricing": {"found": true, "caps": "No explicit caps found", "details": "description of spread pricing terms"}, "formulary_clauses": {"found": true, "change_notification_days": 60, "details": "description of formulary management terms"}, "audit_rights": {"found": true, "frequency": "Once per year", "scope": "Claims data only", "details": "description of audit rights", "checklist": {"ndc_level_audit": {"found": false, "details": "Whether audit rights extend to NDC-level claim detail (not just J-code summaries)"}, "annual_audit_right": {"found": false, "details": "Whether employer has the right to audit at least once per contract year"}, "lookback_36_months": {"found": false, "details": "Whether audit lookback period extends to 36 months (vs shorter windows PBMs prefer)"}, "notice_90_days_or_less": {"found": false, "details": "Notice period required before audit — 90 days or less is acceptable, longer favors PBM"}, "data_delivery_30_days": {"found": false, "details": "Whether PBM must deliver requested audit data within 30 days of request"}, "finding_response_30_days": {"found": false, "details": "Whether PBM must respond to audit findings within 30 days"}, "financial_guarantees_turnaround": {"found": false, "details": "Whether there are financial penalties for PBM missing audit turnaround deadlines"}, "error_correction": {"found": false, "details": "Whether PBM is required to correct errors found during audit and issue credits"}, "manufacturer_contract_access": {"found": false, "details": "Whether employer can access up to 12 manufacturer rebate contracts for verification"}, "survival_post_termination_3yr": {"found": false, "details": "Whether audit rights survive contract termination for at least 3 years"}, "no_audit_cost_to_plan": {"found": false, "details": "Whether audit costs are borne by PBM (not charged back to plan sponsor)"}}}, "mac_pricing": {"found": true, "update_frequency": "Monthly", "appeal_rights": false, "details": "description of MAC pricing"}, "termination_provisions": {"found": true, "notice_days": 180, "penalties": "Liquidated damages", "details": "description of termination terms"}, "gag_clauses": {"found": true, "details": "description of any gag clauses"}, "eligible_rebate_definition": {"found": true, "definition_text": "exact contract language defining eligible rebates", "includes_admin_fees": false, "includes_volume_bonuses": false, "includes_price_protection": false, "narrow_definition_flag": true, "details": "CRITICAL: This is the single most important clause. PBMs define 'eligible rebates' narrowly to exclude admin fees, volume bonuses, and price protection rebates — reducing effective passthrough from the stated percentage. Flag if the definition excludes any of these categories."}, "dispute_resolution": {"found": true, "mechanism": "arbitration", "details": "Whether disputes go to mediation, arbitration, or litigation. Mediation is non-binding and weakest for the plan sponsor. Arbitration is binding but private (PBM-favorable). Litigation in court is strongest for the plan sponsor because it allows discovery and public record. Also note venue/jurisdiction requirements."}, "statistical_extrapolation_rights": {"found": false, "details": "Whether the employer can extrapolate error rates found in a sample audit to the full claims universe. PBMs fight hard against this because a 3% error rate in a sample of 1,000 claims can be applied to 500,000 claims. Without this right, the employer can only recover errors found in the specific claims audited."}, "compliance_flags": [{"issue": "description of compliance issue", "severity": "high", "recommendation": "what to do about it"}], "overall_risk_score": 78, "summary": "overall assessment of the contract"}
+CRITICAL FRAMING: Do NOT use "compliant" vs "non-compliant." Instead, rate each provision on this scale:
+- "employer_favorable" — term protects the employer's interests
+- "neutral" — standard industry language, neither side strongly advantaged
+- "pbm_favorable" — term protects PBM interests at employer's expense
 
-IMPORTANT: overall_risk_score MUST be an integer 0-100. severity MUST be "high", "medium", or "low". All string values must use double quotes. Be thorough and flag terms unfavorable to the plan sponsor.
+Return valid JSON with this structure:
 
-EXTRACTION PRIORITIES (from real state PBM contract audits):
-1. ELIGIBLE REBATE DEFINITION — The #1 most impactful clause. If "eligible rebates" excludes admin fees, volume bonuses, or price protection, the stated passthrough percentage is misleading. A contract promising "100% of eligible rebates" can deliver under 60% of actual manufacturer payments.
-2. AUDIT RIGHTS CHECKLIST — Check all 11 items listed in the audit_rights.checklist structure. Most PBM contracts fail 6-8 of these items.
-3. STATISTICAL EXTRAPOLATION — Without this right, audits have limited financial recovery potential.
-4. DISPUTE RESOLUTION — Determines whether audit findings can actually be enforced. Arbitration with PBM-selected arbitrators is a red flag.
+{
+  "rebate_passthrough": {
+    "found": true,
+    "percentage": "85% of eligible rebates",
+    "effective_passthrough": "Estimated 55-65% of total manufacturer payments",
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "spread_pricing": {
+    "found": true,
+    "caps": "No explicit caps",
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "formulary_clauses": {
+    "found": true,
+    "change_notification_days": 60,
+    "favorability": "pbm_favorable",
+    "details": "description",
+    "lower_net_cost_language": false,
+    "lower_net_cost_details": "If contract uses 'lower net cost' language it signals PBM optimizing for rebates over ingredient cost"
+  },
+  "audit_rights": {
+    "found": true,
+    "frequency": "Once per year",
+    "scope": "Limited",
+    "favorability": "pbm_favorable",
+    "details": "description",
+    "checklist": {
+      "ndc_level_audit": {"found": false, "details": ""},
+      "annual_audit_right": {"found": false, "details": ""},
+      "lookback_36_months": {"found": false, "details": ""},
+      "notice_90_days_or_less": {"found": false, "details": ""},
+      "data_delivery_30_days": {"found": false, "details": ""},
+      "finding_response_30_days": {"found": false, "details": ""},
+      "financial_guarantees_turnaround": {"found": false, "details": ""},
+      "error_correction": {"found": false, "details": ""},
+      "manufacturer_contract_access": {"found": false, "details": ""},
+      "survival_post_termination_3yr": {"found": false, "details": ""},
+      "no_audit_cost_to_plan": {"found": false, "details": ""}
+    }
+  },
+  "mac_pricing": {
+    "found": true,
+    "update_frequency": "Monthly",
+    "appeal_rights": false,
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "termination_provisions": {
+    "found": true,
+    "notice_days": 180,
+    "penalties": "Liquidated damages",
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "gag_clauses": {
+    "found": true,
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "specialty_channel": {
+    "found": true,
+    "external_routing_rights": false,
+    "vendor_channel_optionality": false,
+    "pricing_transparency": false,
+    "favorability": "pbm_favorable",
+    "details": "Assess whether employer has optionality over specialty drug sourcing — routing rights, choice of specialty pharmacy vendor, and pricing visibility. The issue is NOT whether a carve-out exists, but whether the employer has any control or optionality."
+  },
+  "eligible_rebate_definition": {
+    "found": true,
+    "definition_text": "exact contract language",
+    "includes_admin_fees": false,
+    "includes_volume_bonuses": false,
+    "includes_price_protection": false,
+    "narrow_definition_flag": true,
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "dispute_resolution": {
+    "found": true,
+    "mechanism": "arbitration",
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "statistical_extrapolation_rights": {
+    "found": false,
+    "favorability": "pbm_favorable",
+    "details": "description"
+  },
+  "linked_findings": [
+    {
+      "title": "Rebate Passthrough Undermined by Narrow Definition",
+      "terms_involved": ["rebate_passthrough", "eligible_rebate_definition"],
+      "explanation": "Contract states X% passthrough but narrow eligible rebate definition limits effective passthrough to Y%",
+      "economic_impact": "description of dollar impact"
+    }
+  ],
+  "economic_linkages": [
+    "MAC opacity + pass-through pricing creates hidden PBM margin",
+    "Formulary control + narrow rebate definitions allow PBM to maximize retained rebates",
+    "Specialty channel lock-in + lack of routing rights eliminates employer price competition",
+    "Audit scope limits + rebate exclusions prevent discovery of true PBM economics"
+  ],
+  "compliance_flags": [
+    {"issue": "description", "severity": "high", "favorability": "pbm_favorable", "recommendation": "what to do"}
+  ],
+  "overall_risk_score": 78,
+  "summary": "overall assessment"
+}
+
+KEY ANALYSIS RULES:
+1. LINK RELATED FINDINGS: If passthrough % is high but rebate definition is narrow, these MUST appear in linked_findings showing the effective passthrough is lower than stated. Never present these as independent good+bad findings.
+2. TERMINATION: Notice periods >90 days, liquidated damages, auto-renewal = PBM-favorable. Only flag as employer-favorable if: short notice (<60 days), no penalties, no auto-renewal, survival of data/audit rights.
+3. SPECIALTY CHANNEL: Do NOT flag "no specialty carve-out" as a standalone issue. Instead assess routing rights, vendor optionality, and pricing transparency. The employer needs OPTIONS, not necessarily a carve-out.
+4. NET COST LANGUAGE: If contract references "lower net cost" drugs rather than "lower ingredient cost," flag this — it signals PBM optimizing for rebate revenue over actual drug cost to the plan.
+5. ECONOMIC LINKAGES: Identify cross-cutting patterns where multiple contract terms combine to create PBM economic advantage (MAC opacity + pass-through, formulary control + rebate definitions, audit limits + rebate exclusions).
+6. ELIGIBLE REBATE DEFINITION: This is the #1 most impactful clause. If it excludes admin fees, volume bonuses, or price protection, the stated passthrough is misleading.
+7. AUDIT RIGHTS CHECKLIST: Check all 11 items. Most PBM contracts fail 6-8.
 """
 
 async def analyze_contract(text: str) -> dict:

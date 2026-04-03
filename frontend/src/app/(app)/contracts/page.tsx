@@ -273,25 +273,38 @@ Title: Executive Director`;
 
 function mapApiToTerms(a: Record<string, Record<string, unknown>>): ExtractedTerm[] {
   const labels: Record<string, string> = {
-    rebate_passthrough: "Rebate Passthrough Guarantee",
-    spread_pricing: "Spread Pricing Allowance",
-    audit_rights: "Audit Rights",
+    rebate_passthrough: "Rebate Passthrough",
+    spread_pricing: "Spread Pricing",
     formulary_clauses: "Formulary Management",
-    mac_pricing: "MAC List Transparency",
+    audit_rights: "Audit Rights",
+    mac_pricing: "MAC Pricing",
     termination_provisions: "Termination Provisions",
-    gag_clauses: "Gag Clause Provisions",
+    gag_clauses: "Gag Clauses",
+    specialty_channel: "Specialty Channel Control",
   };
   const terms: ExtractedTerm[] = [];
   for (const [key, val] of Object.entries(a)) {
-    if (!val || typeof val !== "object" || key === "compliance_flags" || key === "overall_risk_score" || key === "summary" || key === "audit_rights" || key === "eligible_rebate_definition" || key === "dispute_resolution" || key === "statistical_extrapolation") continue;
-    const details = ((val.details as string) || "").toLowerCase();
-    const hasIssue = details.includes("no ") || details.includes("not ") || details.includes("concern") || details.includes("narrow") || details.includes("limit") || details.includes("restrict") || details.includes("proprietary") || details.includes("retain");
-    const isCritical = details.includes("significant") || details.includes("narrow") || details.includes("proprietary") || details.includes("no transparency") || details.includes("no requirement");
-    const extractedValue = (val.percentage || val.caps || (val.change_notification_days ? val.change_notification_days + " days" : null) || val.scope || val.notice_period || (val.found ? "Found" : "Not found")) as string;
+    if (!val || typeof val !== "object" || key === "compliance_flags" || key === "overall_risk_score" || key === "summary" || key === "audit_rights" || key === "eligible_rebate_definition" || key === "dispute_resolution" || key === "statistical_extrapolation" || key === "linked_findings" || key === "economic_linkages" || key === "specialty_channel") continue;
+    // Use favorability from AI if available, fall back to heuristic
+    const favorability = (val.favorability as string) || "";
+    let status: "good" | "warning" | "critical";
+    if (favorability === "employer_favorable") {
+      status = "good";
+    } else if (favorability === "neutral") {
+      status = "warning";
+    } else if (favorability === "pbm_favorable") {
+      status = "critical";
+    } else {
+      // Fallback heuristic
+      const details = ((val.details as string) || "").toLowerCase();
+      const hasIssue = details.includes("no ") || details.includes("not ") || details.includes("concern") || details.includes("narrow") || details.includes("limit") || details.includes("restrict") || details.includes("retain");
+      status = hasIssue ? "critical" : "good";
+    }
+    const extractedValue = (val.percentage || val.effective_passthrough || val.caps || (val.change_notification_days ? val.change_notification_days + " days" : null) || val.scope || val.notice_period || (val.notice_days ? val.notice_days + " days" : null) || val.mechanism || (val.found ? "Found" : "Not found")) as string;
     terms.push({
       clause: labels[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
       value: extractedValue,
-      status: isCritical ? "critical" : hasIssue ? "warning" : "good",
+      status,
       note: (val.details as string) || "",
     });
   }
@@ -476,13 +489,13 @@ export default function ContractsPage() {
     }
   };
 
-  useEffect(() => {
-    if (!hasAutoLoaded.current) {
-      hasAutoLoaded.current = true;
-      handleSampleContract();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Don't auto-load sample contract — wait for user to upload or click the button
+  // useEffect(() => {
+  //   if (!hasAutoLoaded.current) {
+  //     hasAutoLoaded.current = true;
+  //     handleSampleContract();
+  //   }
+  // }, []);
 
   const handleSampleContract = async () => {
     setLoading(true);
@@ -626,19 +639,19 @@ export default function ContractsPage() {
               <p className="text-2xl font-bold text-emerald-700">
                 {complianceCount!.good}
               </p>
-              <p className="text-sm text-emerald-600">Compliant</p>
+              <p className="text-sm text-emerald-600">Employer-Favorable</p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
               <p className="text-2xl font-bold text-amber-700">
                 {complianceCount!.warning}
               </p>
-              <p className="text-sm text-amber-600">Review Needed</p>
+              <p className="text-sm text-amber-600">Neutral</p>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
               <p className="text-2xl font-bold text-red-700">
                 {complianceCount!.critical}
               </p>
-              <p className="text-sm text-red-600">Non-Compliant</p>
+              <p className="text-sm text-red-600">PBM-Favorable</p>
             </div>
 
             {/* Export PDF Button */}
@@ -690,10 +703,10 @@ export default function ContractsPage() {
                         status={term.status}
                         label={
                           term.status === "good"
-                            ? "Compliant"
+                            ? "Employer"
                             : term.status === "warning"
-                            ? "Review"
-                            : "Non-Compliant"
+                            ? "Neutral"
+                            : "PBM"
                         }
                       />
                     </td>

@@ -138,20 +138,20 @@ def _build_styles():
 
 def _status_style(status: str, styles) -> str:
     """Map status to style name."""
-    if status in ("good", "compliant", "found"):
+    if status in ("good", "employer_favorable", "found"):
         return "StatusGood"
-    if status in ("critical", "non-compliant", "missing", "high"):
+    if status in ("critical", "pbm_favorable", "missing", "high"):
         return "StatusBad"
     return "StatusWarn"
 
 
 def _status_label(status: str) -> str:
     s = status.lower()
-    if s in ("good", "compliant", "found"):
-        return "COMPLIANT"
-    if s in ("critical", "non-compliant", "missing"):
-        return "NON-COMPLIANT"
-    return "REVIEW"
+    if s in ("good", "employer_favorable", "found"):
+        return "EMPLOYER"
+    if s in ("critical", "pbm_favorable", "missing"):
+        return "PBM"
+    return "NEUTRAL"
 
 
 def _severity_color(severity: str) -> colors.Color:
@@ -267,6 +267,7 @@ def generate_contract_report(
         "mac_pricing": "MAC Pricing",
         "termination_provisions": "Termination",
         "gag_clauses": "Gag Clauses",
+        "specialty_channel": "Specialty Channel",
     }
 
     term_rows = [["Term", "Value", "Status", "Details"]]
@@ -275,22 +276,37 @@ def generate_contract_report(
             val = analysis.get(key)
             if not val or not isinstance(val, dict):
                 continue
-            # Extract the most meaningful value — prefer percentage, caps, scope, days over boolean "found"
+            # Extract the most meaningful value
             display_val = (
-                val.get("percentage")
+                val.get("effective_passthrough")
+                or val.get("percentage")
                 or val.get("caps")
                 or val.get("scope")
                 or val.get("notice_period")
+                or (str(val.get("notice_days", "")) + " days" if val.get("notice_days") else None)
+                or val.get("mechanism")
                 or (str(val.get("change_notification_days", "")) + " days" if val.get("change_notification_days") else None)
                 or ("Found" if val.get("found") else "Not found")
             )
             details = val.get("details", "")
-            has_issue = any(w in str(details).lower() for w in ["no ", "not ", "narrow", "limit", "restrict", "retain"])
-            status = "ISSUE" if has_issue else "OK"
+            favorability = val.get("favorability", "")
+            if favorability == "employer_favorable":
+                status_label = "EMPLOYER"
+                status_key = "good"
+            elif favorability == "pbm_favorable":
+                status_label = "PBM"
+                status_key = "critical"
+            elif favorability == "neutral":
+                status_label = "NEUTRAL"
+                status_key = "warning"
+            else:
+                has_issue = any(w in str(details).lower() for w in ["no ", "not ", "narrow", "limit", "restrict", "retain"])
+                status_label = "PBM" if has_issue else "EMPLOYER"
+                status_key = "critical" if has_issue else "good"
             term_rows.append([
                 Paragraph(label, styles["Body"]),
                 Paragraph(str(display_val)[:60], styles["Body"]),
-                Paragraph(status, styles[_status_style("critical" if has_issue else "good", styles)]),
+                Paragraph(status_label, styles[_status_style(status_key, styles)]),
                 Paragraph(str(details)[:120], styles["SmallText"]),
             ])
 

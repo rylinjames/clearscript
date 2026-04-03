@@ -47,7 +47,7 @@ interface ComparisonResult {
 
 export default function SPCPage() {
   const { toast } = useToast();
-  usePageTitle("SPC/SBC Parser");
+  usePageTitle("SBC/SPD Parser");
   const [parsing, setParsing] = useState(false);
   const [data, setData] = useState<SPCData | null>(null);
   const [comparing, setComparing] = useState(false);
@@ -64,12 +64,12 @@ export default function SPCPage() {
         const res = await fetch("/api/spc/parse", { method: "POST", body: formData });
         if (res.ok) {
           setData(await res.json());
-          toast("SPC parsed successfully", "success");
+          toast("Plan document parsed successfully", "success");
         } else {
-          toast("Failed to parse SPC document", "error");
+          toast("Failed to parse plan document document", "error");
         }
       } catch {
-        toast("Failed to parse SPC document", "error");
+        toast("Failed to parse plan document document", "error");
       }
       setParsing(false);
     },
@@ -102,7 +102,7 @@ export default function SPCPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
           <FileText className="w-7 h-7 text-primary-600" />
-          SPC / SBC Parser
+          Plan Document Parser
         </h1>
         <p className="text-gray-500 mt-1">
           Upload a Summary of Benefits and Coverage to extract and structure plan details
@@ -111,9 +111,9 @@ export default function SPCPage() {
 
       <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wider">
-          Upload SPC/SBC Document
+          Upload SBC/SPD Document
         </h3>
-        <FileUpload onFileSelect={handleFileUpload} accept=".pdf" label="Upload SPC or SBC PDF" />
+        <FileUpload onFileSelect={handleFileUpload} accept=".pdf" label="Upload SBC, SPD, or EOC document" />
         {parsing && (
           <div className="flex items-center justify-center gap-2 mt-4">
             <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
@@ -192,7 +192,7 @@ export default function SPCPage() {
               <GitCompare className="w-4 h-4 text-primary-600" />
               Compare with Another SPC
             </h3>
-            <FileUpload onFileSelect={handleCompareUpload} accept=".pdf" label="Upload second SPC/SBC for comparison" />
+            <FileUpload onFileSelect={handleCompareUpload} accept=".pdf" label="Upload second SBC/SPD for comparison" />
             {comparing && (
               <div className="flex items-center justify-center gap-2 mt-4">
                 <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
