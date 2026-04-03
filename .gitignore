@@ -9,3 +9,4 @@ node_modules/
 *.db-wal
 .DS_Store
 backend/.venv/
+backend/data/cms/*.csv
