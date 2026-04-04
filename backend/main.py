@@ -23,6 +23,7 @@ from routers import (
     spc,
     compliance,
     audit,
+    claims_upload,
 )
 
 # ─── Future Products (commented out) ──────────────────────────────────────
@@ -75,6 +76,7 @@ app.include_router(disclosure.router)
 app.include_router(spc.router)
 app.include_router(compliance.router)
 app.include_router(audit.router)
+app.include_router(claims_upload.router)
 
 # ─── Future Products (commented out) ──────────────────────────────────────
 # app.include_router(benchmarks.router)
@@ -123,9 +125,12 @@ async def health():
 @app.get("/api/dashboard/stats")
 async def dashboard_stats():
     """Aggregate stats for the dashboard."""
-    from services.db_service import _get_conn
+    from services.db_service import _get_conn, load_latest_contract_analysis
+    from services.data_service import get_claims_status
 
     contracts_count = 0
+    latest_analysis = None
+    claims_status = {"custom_data_loaded": False, "claims_count": 0}
     try:
         conn = _get_conn()
         row = conn.execute("SELECT COUNT(*) as cnt FROM contract_analyses").fetchone()
@@ -137,14 +142,49 @@ async def dashboard_stats():
             conn.close()
         except Exception:
             pass
+    try:
+        latest_analysis = load_latest_contract_analysis()
+    except Exception:
+        latest_analysis = None
+    try:
+        claims_status = get_claims_status()
+    except Exception:
+        claims_status = {"custom_data_loaded": False, "claims_count": 0}
+
+    latest = (latest_analysis or {}).get("analysis", {}) if latest_analysis else {}
+    weighted = latest.get("weighted_assessment", {}) if isinstance(latest, dict) else {}
+    exposure = latest.get("financial_exposure", {}) if isinstance(latest, dict) else {}
+    top_risks = latest.get("top_risks", []) if isinstance(latest, dict) else []
+    immediate_actions = latest.get("immediate_actions", []) if isinstance(latest, dict) else []
 
     return {
-        "claims_loaded": False,
-        "claims_count": 0,
+        "claims_loaded": bool(claims_status.get("custom_data_loaded")),
+        "claims_count": int(claims_status.get("claims_count", 0) or 0),
         "contracts_parsed": contracts_count,
         "modules_active": 7,
         "data_source": "contract_reader",
+        "latest_analysis": {
+            "filename": latest_analysis.get("filename") if latest_analysis else None,
+            "analysis_date": latest_analysis.get("analysis_date") if latest_analysis else None,
+            "deal_score": weighted.get("deal_score"),
+            "weighted_risk_score": weighted.get("weighted_risk_score"),
+            "risk_level": weighted.get("risk_level"),
+            "deal_diagnosis": latest.get("deal_diagnosis") if isinstance(latest, dict) else None,
+            "financial_exposure_summary": exposure.get("summary") if isinstance(exposure, dict) else None,
+            "financial_exposure_mode": exposure.get("mode") if isinstance(exposure, dict) else None,
+            "spread_exposure_estimate": exposure.get("spread_exposure", {}).get("estimate") if isinstance(exposure, dict) and isinstance(exposure.get("spread_exposure"), dict) else None,
+            "top_risks": top_risks[:3] if isinstance(top_risks, list) else [],
+            "immediate_actions": immediate_actions[:3] if isinstance(immediate_actions, list) else [],
+        },
     }
+
+
+@app.on_event("startup")
+async def restore_claims_on_startup():
+    try:
+        await claims_upload.restore_persisted_claims()
+    except Exception as e:
+        logger.debug(f"Claims restore skipped on startup: {e}")
 
 
 if __name__ == "__main__":

@@ -53,10 +53,11 @@ async def run_contract_pipeline(contract_text: str) -> dict:
             response = await client.send(token, contract_text[:12000])
 
             # The response should contain the analysis
+            from services.ai_service import enrich_contract_analysis
             if isinstance(response, dict):
-                return response
+                return enrich_contract_analysis(response)
             elif isinstance(response, str):
-                return json.loads(response)
+                return enrich_contract_analysis(json.loads(response))
             else:
                 raise RuntimeError(f"Unexpected response type: {type(response)}")
 
@@ -65,7 +66,6 @@ async def run_contract_pipeline(contract_text: str) -> dict:
         # Fall back to direct Gemini call
         from services.ai_service import analyze_contract
         return await analyze_contract(contract_text)
-
 
 async def get_pipeline_status() -> dict:
     """Check if RocketRide engine is available."""

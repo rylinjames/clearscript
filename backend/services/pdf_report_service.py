@@ -163,6 +163,14 @@ def _severity_color(severity: str) -> colors.Color:
     return colors.HexColor("#eff6ff")
 
 
+def _safe_list(value):
+    return value if isinstance(value, list) else []
+
+
+def _safe_dict(value):
+    return value if isinstance(value, dict) else {}
+
+
 def generate_contract_report(
     filename: str,
     analysis: dict,
@@ -223,20 +231,37 @@ def generate_contract_report(
     compliance_flags = analysis.get("compliance_flags", []) if isinstance(analysis, dict) else []
     high_flags = [f for f in compliance_flags if isinstance(f, dict) and f.get("severity") == "high"]
     medium_flags = [f for f in compliance_flags if isinstance(f, dict) and f.get("severity") == "medium"]
+    weighted_assessment = _safe_dict(analysis.get("weighted_assessment")) if isinstance(analysis, dict) else {}
+    financial_exposure = _safe_dict(analysis.get("financial_exposure")) if isinstance(analysis, dict) else {}
+    control_map = _safe_list(analysis.get("control_map")) if isinstance(analysis, dict) else []
+    top_risks = _safe_list(analysis.get("top_risks")) if isinstance(analysis, dict) else []
+    immediate_actions = _safe_list(analysis.get("immediate_actions")) if isinstance(analysis, dict) else []
+    deal_diagnosis = analysis.get("deal_diagnosis", "") if isinstance(analysis, dict) else ""
+    audit_implication = analysis.get("audit_implication", "") if isinstance(analysis, dict) else ""
 
     story.append(Paragraph("1. Executive Summary", styles["SectionHeader"]))
     story.append(HRFlowable(width="100%", thickness=0.5, color=GRAY_200, spaceAfter=12))
 
+    if deal_diagnosis:
+        story.append(Paragraph("<b>Deal Diagnosis</b>", styles["SubHeader"]))
+        story.append(Paragraph(str(deal_diagnosis), styles["Body"]))
+        story.append(Spacer(1, 8))
+
     # Risk score box
     score_color = EMERALD if risk_score < 40 else (AMBER if risk_score < 70 else RED)
     risk_label = "LOW RISK" if risk_score < 40 else ("MODERATE RISK" if risk_score < 70 else "HIGH RISK")
+    deal_score = weighted_assessment.get("deal_score", max(0, 100 - risk_score))
+    weighted_risk = weighted_assessment.get("weighted_risk_score", risk_score)
+    methodology = weighted_assessment.get("methodology", "")
 
     score_data = [[
-        Paragraph(f"{risk_score}", ParagraphStyle("Score", fontName="Helvetica-Bold", fontSize=40, textColor=score_color, alignment=TA_CENTER)),
+        Paragraph(f"{deal_score}", ParagraphStyle("Score", fontName="Helvetica-Bold", fontSize=40, textColor=score_color, alignment=TA_CENTER)),
         Paragraph(
-            f"<b>Overall Risk Score: {risk_label}</b><br/><br/>"
-            f"This contract has {len(high_flags)} high-severity and {len(medium_flags)} medium-severity compliance flags. "
-            f"{'Immediate review is recommended.' if risk_score >= 70 else 'Review the flagged items below.' if risk_score >= 40 else 'Contract terms are generally favorable.'}",
+            f"<b>PBM Deal Score: {deal_score}/100</b><br/><br/>"
+            f"Weighted risk score: {weighted_risk} ({risk_label}). "
+            f"This contract has {len(high_flags)} high-severity and {len(medium_flags)} medium-severity flags, "
+            f"but the score is weighted toward rebate structure, spread pricing, specialty control, and audit rights."
+            f"{'<br/><br/>' + str(methodology) if methodology else ''}",
             styles["Body"],
         ),
     ]]
@@ -253,6 +278,94 @@ def generate_contract_report(
     ]))
     story.append(score_table)
     story.append(Spacer(1, 0.2 * inch))
+
+    if top_risks:
+        story.append(Paragraph("Top Risks", styles["SubHeader"]))
+        for risk in top_risks[:3]:
+            if isinstance(risk, dict):
+                story.append(Paragraph(
+                    f"<b>{risk.get('title', 'Risk')}</b> (Tier {risk.get('tier', 'N/A')}) — {risk.get('why_it_matters', '')}",
+                    styles["Body"],
+                ))
+                if risk.get("recommendation"):
+                    story.append(Paragraph(f"<b>Action:</b> {risk.get('recommendation')}", styles["SmallText"]))
+        story.append(Spacer(1, 8))
+
+    if financial_exposure:
+        story.append(Paragraph("Estimated Financial Exposure", styles["SubHeader"]))
+        if financial_exposure.get("summary"):
+            story.append(Paragraph(str(financial_exposure.get("summary")), styles["Body"]))
+        exposure_rows = [["Area", "Level", "Directional Exposure", "Driver"]]
+        for label, key in [
+            ("Rebate Leakage", "rebate_leakage"),
+            ("Spread Exposure", "spread_exposure"),
+            ("Specialty Control", "specialty_control"),
+        ]:
+            item = financial_exposure.get(key)
+            if isinstance(item, dict):
+                exposure_rows.append([
+                    label,
+                    str(item.get("level", "")).upper(),
+                    str(item.get("estimate", "")),
+                    Paragraph(str(item.get("driver", "")), styles["SmallText"]),
+                ])
+        if len(exposure_rows) > 1:
+            exposure_table = Table(exposure_rows, colWidths=[1.4 * inch, 0.8 * inch, 1.4 * inch, 3.0 * inch])
+            exposure_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, GRAY_50]),
+                ("BOX", (0, 0), (-1, -1), 0.5, GRAY_200),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ]))
+            story.append(exposure_table)
+            story.append(Spacer(1, 8))
+
+    if control_map:
+        story.append(Paragraph("Control Map", styles["SubHeader"]))
+        control_rows = [["Lever", "Controller", "Assessment", "Implication"]]
+        for item in control_map[:5]:
+            if isinstance(item, dict):
+                control_rows.append([
+                    str(item.get("lever", "")),
+                    str(item.get("controller", "")),
+                    Paragraph(str(item.get("assessment", "")), styles["SmallText"]),
+                    Paragraph(str(item.get("implication", "")), styles["SmallText"]),
+                ])
+        if len(control_rows) > 1:
+            control_table = Table(control_rows, colWidths=[1.1 * inch, 1.0 * inch, 2.2 * inch, 2.2 * inch])
+            control_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, GRAY_50]),
+                ("BOX", (0, 0), (-1, -1), 0.5, GRAY_200),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ]))
+            story.append(control_table)
+            story.append(Spacer(1, 8))
+
+    if audit_implication:
+        story.append(Paragraph("Audit Interpretation", styles["SubHeader"]))
+        story.append(Paragraph(str(audit_implication), styles["Body"]))
+        story.append(Spacer(1, 8))
+
+    if immediate_actions:
+        story.append(Paragraph("Immediate Actions", styles["SubHeader"]))
+        for index, action in enumerate(immediate_actions[:3], start=1):
+            story.append(Paragraph(f"<b>{index}.</b> {action}", styles["Body"]))
+        story.append(Spacer(1, 8))
 
     # ─── 2. Contract Terms ───────────────────────────────────────────────
 

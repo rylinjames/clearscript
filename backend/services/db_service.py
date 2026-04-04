@@ -126,6 +126,34 @@ def save_contract_analysis(filename: str, analysis: dict, risk_score: int, audit
         conn.close()
 
 
+def load_latest_contract_analysis() -> Optional[Dict[str, Any]]:
+    """Load the most recent contract analysis with parsed JSON."""
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT filename, analysis_date, analysis_json, risk_score, audit_rights_score FROM contract_analyses ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            parsed = json.loads(row[2])
+        except json.JSONDecodeError:
+            logger.error(f"Corrupted contract analysis JSON for file: {row[0]}")
+            return None
+        return {
+            "filename": row[0],
+            "analysis_date": row[1],
+            "analysis": parsed,
+            "risk_score": row[3],
+            "audit_rights_score": row[4],
+        }
+    except sqlite3.Error as e:
+        logger.error(f"Failed to load latest contract analysis: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 def save_audit_result(analysis_type: str, result: dict) -> int:
     """Save any analysis result for historical tracking."""
     conn = _get_conn()

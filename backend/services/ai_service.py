@@ -192,6 +192,28 @@ Return valid JSON with this structure:
   "compliance_flags": [
     {"issue": "description", "severity": "high", "favorability": "pbm_favorable", "recommendation": "what to do"}
   ],
+  "deal_diagnosis": "one-line plain-English diagnosis of the contract structure",
+  "financial_exposure": {
+    "summary": "directional financial exposure summary",
+    "rebate_leakage": {"level": "high", "estimate": "3-6% of brand spend", "driver": "narrow rebate definition"},
+    "spread_exposure": {"level": "high", "estimate": "1-3% of total claims spend", "driver": "spread retained by PBM"},
+    "specialty_control": {"level": "high", "estimate": "30-50% of total Rx spend subject to PBM channel control", "driver": "exclusive specialty routing"}
+  },
+  "control_map": [
+    {"lever": "Rebates", "controller": "PBM", "assessment": "PBM retains control through exclusion-based rebate definition", "implication": "Plan cannot verify full manufacturer compensation"},
+    {"lever": "Pricing", "controller": "PBM", "assessment": "Spread pricing retained with limited transparency", "implication": "Plan cannot validate net claim economics"}
+  ],
+  "top_risks": [
+    {"title": "Narrow rebate definition", "tier": 1, "severity": "high", "why_it_matters": "Passthrough promise is materially reduced", "recommendation": "Expand eligible rebate definition"},
+    {"title": "Spread pricing retained", "tier": 1, "severity": "high", "why_it_matters": "PBM can keep undisclosed margin", "recommendation": "Require pass-through pricing"},
+    {"title": "Restricted specialty control", "tier": 1, "severity": "high", "why_it_matters": "Highest-cost channel remains under PBM control", "recommendation": "Add vendor optionality and transparent specialty pricing"}
+  ],
+  "immediate_actions": [
+    "Renegotiate eligible rebate definition before renewal",
+    "Require spread pricing prohibition or quarterly reconciliation",
+    "Expand audit rights to manufacturer contracts, network agreements, and specialty economics"
+  ],
+  "audit_implication": "state explicitly what the plan sponsor cannot verify under the current audit language",
   "overall_risk_score": 78,
   "summary": "overall assessment"
 }
@@ -242,19 +264,378 @@ KEY ANALYSIS RULES:
    SPECIALTY CHANNEL: "Plan Sponsor retains the right to designate or approve the specialty pharmacy vendor(s) used for dispensing specialty medications. PBM shall provide transparent pricing for specialty drugs including acquisition cost, dispensing fees, and any channel-specific markups."
 
    Only generate redlines for terms that are pbm_favorable. Do not generate redlines for employer_favorable or neutral terms.
+9. DECISION LAYER: Do not treat all issues equally. Weight the output explicitly:
+   - Tier 1: rebate structure, spread pricing, specialty control
+   - Tier 2: MAC pricing, formulary control, channel requirements
+   - Tier 3: notice, termination, and other administrative terms
+10. FINANCIAL EXPOSURE: Keep estimates directional, not fake precision. Express exposure as ranges or percentages of spend, not invented exact dollars unless the contract itself supports it.
+11. AUDIT IMPLICATIONS: Move beyond missing-provision lists. State plainly when the current audit language means the plan sponsor cannot verify pricing, rebate flows, manufacturer compensation, or specialty economics.
 """
+
+TIER_WEIGHTS = {
+    "rebate_passthrough": 24,
+    "eligible_rebate_definition": 24,
+    "spread_pricing": 22,
+    "specialty_channel": 18,
+    "audit_rights": 12,
+    "mac_pricing": 8,
+    "formulary_clauses": 7,
+    "termination_provisions": 4,
+    "gag_clauses": 5,
+    "statistical_extrapolation_rights": 5,
+}
+
+TIER_LABELS = {
+    "rebate_passthrough": 1,
+    "eligible_rebate_definition": 1,
+    "spread_pricing": 1,
+    "specialty_channel": 1,
+    "audit_rights": 1,
+    "mac_pricing": 2,
+    "formulary_clauses": 2,
+    "termination_provisions": 3,
+    "gag_clauses": 2,
+    "statistical_extrapolation_rights": 2,
+}
+
+TERM_TITLES = {
+    "rebate_passthrough": "Rebate passthrough",
+    "eligible_rebate_definition": "Eligible rebate definition",
+    "spread_pricing": "Spread pricing",
+    "specialty_channel": "Specialty channel control",
+    "audit_rights": "Audit rights",
+    "mac_pricing": "MAC pricing",
+    "formulary_clauses": "Formulary control",
+    "termination_provisions": "Termination provisions",
+    "gag_clauses": "Confidentiality / gag restrictions",
+    "statistical_extrapolation_rights": "Statistical extrapolation",
+}
+
+
+def _normalize_favorability(value) -> str:
+    text = str(value or "").lower()
+    if text in {"employer_favorable", "good"}:
+        return "employer_favorable"
+    if text in {"neutral", "warning"}:
+        return "neutral"
+    if text in {"pbm_favorable", "critical", "bad"}:
+        return "pbm_favorable"
+    return ""
+
+
+def _term_penalty(term: dict, key: str) -> float:
+    favorability = _normalize_favorability(term.get("favorability"))
+    if favorability == "pbm_favorable":
+        return 1.0
+    if favorability == "neutral":
+        return 0.45
+
+    details = str(term.get("details", "")).lower()
+    severe_markers = ["retain", "restrict", "exclusive", "sole discretion", "not disclose", "limited", "exclude"]
+    if any(marker in details for marker in severe_markers):
+        return 0.85
+    if key in {"spread_pricing", "eligible_rebate_definition", "specialty_channel", "audit_rights"}:
+        found = term.get("found")
+        if found is False:
+            return 0.85
+    return 0.0
+
+
+def _financial_exposure_for(analysis: dict) -> dict:
+    rebate = analysis.get("eligible_rebate_definition", {}) if isinstance(analysis, dict) else {}
+    spread = analysis.get("spread_pricing", {}) if isinstance(analysis, dict) else {}
+    specialty = analysis.get("specialty_channel", {}) if isinstance(analysis, dict) else {}
+
+    narrow_rebate = bool(rebate.get("narrow_definition_flag")) or (
+        rebate.get("includes_admin_fees") is False
+        or rebate.get("includes_volume_bonuses") is False
+        or rebate.get("includes_price_protection") is False
+    )
+    spread_hidden = _term_penalty(spread, "spread_pricing") >= 0.85
+    specialty_locked = (
+        specialty.get("external_routing_rights") is False
+        or specialty.get("vendor_channel_optionality") is False
+        or specialty.get("pricing_transparency") is False
+    )
+
+    rebate_exposure = {
+        "level": "high" if narrow_rebate else "moderate",
+        "estimate": "3-6% of brand spend" if narrow_rebate else "1-3% of brand spend",
+        "driver": "Eligible rebate definition excludes admin fees, volume incentives, or price protection"
+        if narrow_rebate else "Passthrough terms should still be validated against rebate definitions",
+    }
+    spread_exposure = {
+        "level": "high" if spread_hidden else "moderate",
+        "estimate": "1-3% of total claims spend" if spread_hidden else "Up to 1% of total claims spend",
+        "driver": "PBM can retain the difference between pharmacy reimbursement and plan charge"
+        if spread_hidden else "Pricing transparency should still be validated claim by claim",
+    }
+    specialty_exposure = {
+        "level": "high" if specialty_locked else "moderate",
+        "estimate": "30-50% of total Rx spend" if specialty_locked else "15-30% of total Rx spend",
+        "driver": "Highest-cost drug category remains under PBM routing and pricing control"
+        if specialty_locked else "Specialty sourcing rights should still be confirmed",
+    }
+
+    return {
+        "mode": "directional",
+        "summary": (
+            "Directional exposure is concentrated in rebate leakage, undisclosed spread, and specialty channel control."
+            if (narrow_rebate or spread_hidden or specialty_locked)
+            else "Primary financial exposure appears moderate but still requires contract-level validation."
+        ),
+        "rebate_leakage": rebate_exposure,
+        "spread_exposure": spread_exposure,
+        "specialty_control": specialty_exposure,
+    }
+
+
+def _claims_backed_exposure_for(analysis: dict) -> dict | None:
+    try:
+        from services.data_service import get_claims, get_claims_status, analyze_spread, analyze_rebates
+    except Exception:
+        return None
+
+    status = get_claims_status()
+    if not status.get("custom_data_loaded"):
+        return None
+
+    claims = get_claims()
+    if not claims:
+        return None
+
+    total_spend = sum(float(c.get("plan_paid", 0) or 0) for c in claims)
+    brand_claims = [c for c in claims if not c.get("generic")]
+    specialty_claims = [c for c in claims if c.get("is_specialty") or c.get("channel") == "specialty"]
+    brand_spend = sum(float(c.get("plan_paid", 0) or 0) for c in brand_claims)
+    specialty_spend = sum(float(c.get("plan_paid", 0) or 0) for c in specialty_claims)
+
+    spread_analysis = analyze_spread(claims)
+    rebate_analysis = analyze_rebates(claims)
+
+    total_spread = float(spread_analysis.get("total_spread_captured", 0) or 0)
+    total_retained_rebates = float(rebate_analysis.get("rebates_retained_by_pbm", 0) or 0)
+    passthrough_rate = float(rebate_analysis.get("passthrough_rate_pct", 0) or 0)
+    spread_pct_total = (total_spread / total_spend * 100) if total_spend else 0.0
+    rebate_pct_brand = (total_retained_rebates / brand_spend * 100) if brand_spend else 0.0
+    specialty_pct_total = (specialty_spend / total_spend * 100) if total_spend else 0.0
+
+    def _level(pct: float) -> str:
+        if pct >= 5:
+            return "high"
+        if pct >= 2:
+            return "moderate"
+        return "low"
+
+    return {
+        "mode": "claims_backed",
+        "summary": (
+            f"Claims-backed estimate based on {len(claims):,} uploaded claims. "
+            f"Observed spread is ${round(total_spread, 2):,.2f}, retained rebates are ${round(total_retained_rebates, 2):,.2f}, "
+            f"and specialty spend totals ${round(specialty_spend, 2):,.2f}."
+        ),
+        "rebate_leakage": {
+            "level": _level(rebate_pct_brand),
+            "estimate": f"${round(total_retained_rebates, 2):,.2f} observed ({rebate_pct_brand:.1f}% of brand spend)",
+            "driver": f"Observed passthrough rate is {passthrough_rate:.1f}% across uploaded claims; contract exclusions may worsen this in practice.",
+        },
+        "spread_exposure": {
+            "level": _level(spread_pct_total),
+            "estimate": f"${round(total_spread, 2):,.2f} observed ({spread_pct_total:.1f}% of total spend)",
+            "driver": f"Observed difference between plan-paid and pharmacy reimbursement across {spread_analysis.get('total_claims_analyzed', len(claims)):,} claims.",
+        },
+        "specialty_control": {
+            "level": _level(specialty_pct_total),
+            "estimate": f"${round(specialty_spend, 2):,.2f} observed ({specialty_pct_total:.1f}% of total Rx spend)",
+            "driver": f"{len(specialty_claims):,} specialty claims in uploaded data are subject to specialty channel economics.",
+        },
+        "claims_context": {
+            "claims_count": len(claims),
+            "claims_filename": status.get("filename"),
+            "date_range_start": status.get("date_range_start"),
+            "date_range_end": status.get("date_range_end"),
+            "total_spend": round(total_spend, 2),
+            "brand_spend": round(brand_spend, 2),
+            "specialty_spend": round(specialty_spend, 2),
+        },
+    }
+
+
+def _control_map_for(analysis: dict) -> list[dict]:
+    rebate = analysis.get("eligible_rebate_definition", {}) if isinstance(analysis, dict) else {}
+    spread = analysis.get("spread_pricing", {}) if isinstance(analysis, dict) else {}
+    specialty = analysis.get("specialty_channel", {}) if isinstance(analysis, dict) else {}
+    audit = analysis.get("audit_rights", {}) if isinstance(analysis, dict) else {}
+    formulary = analysis.get("formulary_clauses", {}) if isinstance(analysis, dict) else {}
+
+    return [
+        {
+            "lever": "Rebates",
+            "controller": "PBM" if rebate.get("narrow_definition_flag") or rebate.get("found") else "Shared",
+            "assessment": rebate.get("details", "Rebate definition determines what compensation is actually passed through."),
+            "implication": "Plan cannot assume stated passthrough equals full manufacturer compensation."
+        },
+        {
+            "lever": "Pricing",
+            "controller": "PBM" if _term_penalty(spread, "spread_pricing") >= 0.45 else "Shared",
+            "assessment": spread.get("details", "Spread terms determine whether pharmacy reimbursement is transparent to the plan."),
+            "implication": "Plan cannot verify net claim economics without claim-level reconciliation."
+        },
+        {
+            "lever": "Specialty",
+            "controller": "PBM" if specialty.get("vendor_channel_optionality") is False else "Shared",
+            "assessment": specialty.get("details", "Specialty routing rights determine who controls the highest-cost channel."),
+            "implication": "Plan loses negotiating leverage where the largest Rx dollars sit."
+        },
+        {
+            "lever": "Formulary",
+            "controller": "PBM" if _term_penalty(formulary, "formulary_clauses") >= 0.45 else "Shared",
+            "assessment": formulary.get("details", "Formulary language determines who can move utilization and rebate mix."),
+            "implication": "PBM can optimize toward rebate economics if employer approval is limited."
+        },
+        {
+            "lever": "Audit / Data",
+            "controller": "PBM" if _term_penalty(audit, "audit_rights") >= 0.45 else "Shared",
+            "assessment": audit.get("details", "Audit scope determines whether the plan can verify economics or only receive PBM summaries."),
+            "implication": "If audit scope is limited, the plan cannot independently validate pricing, rebates, or specialty economics."
+        },
+    ]
+
+
+def _audit_implication_for(analysis: dict) -> str:
+    audit = analysis.get("audit_rights", {}) if isinstance(analysis, dict) else {}
+    details = str(audit.get("details", "")).lower()
+    exposure = analysis.get("financial_exposure", {}) if isinstance(analysis, dict) else {}
+    claims_context = exposure.get("claims_context", {}) if isinstance(exposure, dict) else {}
+    if claims_context:
+        specialty_spend = claims_context.get("specialty_spend", 0)
+        total_spend = claims_context.get("total_spend", 0)
+        return (
+            "Current audit language leaves the plan sponsor unable to verify pharmacy reimbursement, full manufacturer compensation, "
+            f"or specialty economics across ${specialty_spend:,.2f} of observed specialty spend and ${total_spend:,.2f} of uploaded claim volume."
+        )
+    if not audit or "limited" in details or "not include" in details or "claims data only" in details:
+        return "Current audit language leaves the plan sponsor unable to verify pharmacy reimbursement, full manufacturer compensation, network economics, or specialty channel performance."
+    return "Audit language appears broader, but pricing, rebate, and specialty data should still be tested in practice."
+
+
+def _derive_top_risks(analysis: dict) -> list[dict]:
+    risks = []
+    recommendations = {
+        "eligible_rebate_definition": "Expand the definition of eligible rebates to include all manufacturer compensation.",
+        "spread_pricing": "Require pass-through pricing or quarterly claim-level spread reconciliation.",
+        "specialty_channel": "Add specialty vendor optionality and transparent specialty pricing terms.",
+        "audit_rights": "Expand audit rights to manufacturer contracts, network agreements, and specialty economics.",
+        "mac_pricing": "Add MAC transparency, update standards, and appeals rights.",
+        "formulary_clauses": "Require employer approval or stricter notice and justification for formulary changes.",
+        "termination_provisions": "Shorten notice and remove termination penalties.",
+        "gag_clauses": "Remove restrictions on sharing pricing and rebate data with advisors.",
+        "rebate_passthrough": "Tie passthrough guarantees to an expanded rebate definition and remittance reporting.",
+        "statistical_extrapolation_rights": "Permit statistical extrapolation for audited claim errors.",
+    }
+    for key, weight in TIER_WEIGHTS.items():
+        term = analysis.get(key)
+        if not isinstance(term, dict):
+            continue
+        penalty = _term_penalty(term, key)
+        if penalty <= 0:
+            continue
+        risks.append({
+            "title": TERM_TITLES.get(key, key.replace("_", " ")),
+            "tier": TIER_LABELS.get(key, 3),
+            "severity": "high" if penalty >= 0.85 else "medium",
+            "why_it_matters": term.get("details", "This term materially shifts economics or control toward the PBM."),
+            "recommendation": recommendations.get(key, "Renegotiate this term."),
+            "_score": weight * penalty,
+        })
+    risks.sort(key=lambda item: item["_score"], reverse=True)
+    return [{k: v for k, v in risk.items() if k != "_score"} for risk in risks[:3]]
+
+
+def enrich_contract_analysis(analysis: dict) -> dict:
+    if not isinstance(analysis, dict):
+        return analysis
+
+    total_weight = sum(TIER_WEIGHTS.values())
+    weighted_penalty = 0.0
+    tier_buckets = {1: {"label": "Tier 1", "score": 0.0, "weight": 0}, 2: {"label": "Tier 2", "score": 0.0, "weight": 0}, 3: {"label": "Tier 3", "score": 0.0, "weight": 0}}
+
+    for key, weight in TIER_WEIGHTS.items():
+        term = analysis.get(key)
+        if not isinstance(term, dict):
+            continue
+        penalty = _term_penalty(term, key)
+        weighted_penalty += weight * penalty
+        tier = TIER_LABELS.get(key, 3)
+        tier_buckets[tier]["score"] += weight * penalty
+        tier_buckets[tier]["weight"] += weight
+
+    weighted_score = round((weighted_penalty / total_weight) * 100)
+    analysis["overall_risk_score"] = max(int(analysis.get("overall_risk_score", 0) or 0), weighted_score)
+
+    top_risks = analysis.get("top_risks")
+    if not isinstance(top_risks, list) or not top_risks:
+        top_risks = _derive_top_risks(analysis)
+        analysis["top_risks"] = top_risks
+
+    if not analysis.get("financial_exposure"):
+        analysis["financial_exposure"] = _financial_exposure_for(analysis)
+    claims_backed_exposure = _claims_backed_exposure_for(analysis)
+    if claims_backed_exposure:
+        analysis["financial_exposure"] = claims_backed_exposure
+
+    if not analysis.get("control_map"):
+        analysis["control_map"] = _control_map_for(analysis)
+
+    if not analysis.get("audit_implication"):
+        analysis["audit_implication"] = _audit_implication_for(analysis)
+
+    if not analysis.get("immediate_actions"):
+        analysis["immediate_actions"] = [risk["recommendation"] for risk in top_risks[:3]]
+
+    if not analysis.get("deal_diagnosis"):
+        drivers = []
+        if any(risk.get("title", "").lower().startswith("eligible rebate") or "rebate" in risk.get("title", "").lower() for risk in top_risks):
+            drivers.append("rebate passthrough limited by exclusion-based definitions")
+        if any("spread" in risk.get("title", "").lower() for risk in top_risks):
+            drivers.append("spread pricing retained by the PBM")
+        if any("specialty" in risk.get("title", "").lower() for risk in top_risks):
+            drivers.append("specialty channel control retained by the PBM")
+        if _term_penalty(analysis.get("audit_rights", {}), "audit_rights") >= 0.45:
+            drivers.append("audit rights too limited to verify core economics")
+        diagnosis = "PBM-favorable contract structure"
+        if drivers:
+            diagnosis += " with " + ", ".join(drivers[:3]) + "."
+        analysis["deal_diagnosis"] = diagnosis
+
+    analysis["weighted_assessment"] = {
+        "deal_score": max(0, 100 - weighted_score),
+        "weighted_risk_score": weighted_score,
+        "risk_level": "high" if weighted_score >= 65 else "moderate" if weighted_score >= 35 else "low",
+        "tier_scores": [
+            {
+                "tier": bucket["label"],
+                "score": round((bucket["score"] / bucket["weight"]) * 100) if bucket["weight"] else 0,
+                "weight": bucket["weight"],
+            }
+            for bucket in tier_buckets.values()
+        ],
+        "methodology": "Tier 1 economics and control drivers outweigh administrative terms.",
+    }
+
+    return analysis
 
 async def analyze_contract(text: str) -> dict:
     try:
         result = await _generate(CONTRACT_SYSTEM_PROMPT, f"Analyze this PBM contract:\n\n{text[:12000]}", 3000)
         parsed = json.loads(result)
         parsed["_generated_by"] = "ai"
-        return parsed
+        return enrich_contract_analysis(parsed)
     except Exception as e:
         logger.warning(f"AI contract analysis failed, using mock: {e}")
         result = _mock_contract_analysis()
         result["_generated_by"] = "mock"
-        return result
+        return enrich_contract_analysis(result)
 
 def _mock_contract_analysis() -> dict:
     return {
@@ -335,7 +716,8 @@ def _mock_contract_analysis() -> dict:
             {"issue": "Excessive termination penalties", "severity": "medium", "recommendation": "Negotiate reduced liquidated damages and shorter notice period."},
         ],
         "overall_risk_score": 78,
-        "summary": "This contract contains several provisions that significantly favor the PBM over the plan sponsor. Key concerns include narrow rebate definitions that reduce effective passthrough, unrestricted spread pricing, limited audit rights, and potential gag clause violations. Estimated annual cost impact of unfavorable terms: $350,000-$600,000 for a mid-market employer."
+        "summary": "This contract contains several provisions that significantly favor the PBM over the plan sponsor. Key concerns include narrow rebate definitions that reduce effective passthrough, unrestricted spread pricing, limited audit rights, and potential gag clause violations. Estimated annual cost impact of unfavorable terms: $350,000-$600,000 for a mid-market employer.",
+        "deal_diagnosis": "PBM-favorable structure with exclusion-based rebate passthrough, undisclosed spread pricing, restricted specialty control, and audit limits that prevent verification of the core economics."
     }
 
 

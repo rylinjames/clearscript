@@ -25,6 +25,19 @@ interface DashboardStats {
   contracts_parsed: number;
   modules_active: number;
   data_source: string;
+  latest_analysis?: {
+    filename?: string | null;
+    analysis_date?: string | null;
+    deal_score?: number | null;
+    weighted_risk_score?: number | null;
+    risk_level?: string | null;
+    deal_diagnosis?: string | null;
+    financial_exposure_summary?: string | null;
+    financial_exposure_mode?: string | null;
+    spread_exposure_estimate?: string | null;
+    top_risks?: { title?: string; severity?: string; tier?: number }[];
+    immediate_actions?: string[];
+  };
 }
 
 export default function Dashboard() {
@@ -41,6 +54,7 @@ export default function Dashboard() {
   }, []);
 
   const hasContracts = (stats?.contracts_parsed ?? 0) > 0;
+  const latest = stats?.latest_analysis;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -49,7 +63,7 @@ export default function Dashboard() {
         <div className="pt-8 pb-8">
           <div className="mb-10 animate-fade-in">
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Welcome to ClearScript</h1>
-            <p className="text-gray-400 mt-1">Follow these steps to analyze your PBM contract.</p>
+            <p className="text-gray-400 mt-1">Start with the contract, then move into deal quality, plan gaps, and audit recovery.</p>
           </div>
 
           {/* Onboarding Steps */}
@@ -63,9 +77,9 @@ export default function Dashboard() {
                 1
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Upload your PBM contract</h3>
+                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Analyze the PBM deal</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
-                  Upload your PBM services agreement (PDF or text). AI will extract rebate terms, spread pricing, audit rights, formulary clauses, and termination provisions — scored as employer-favorable or PBM-favorable.
+                  Upload the PBM services agreement. ClearScript will identify the economic and control terms that matter most: rebate structure, spread pricing, specialty control, and audit rights.
                 </p>
               </div>
               <ArrowUpRight className="w-4 h-4 text-gray-200 group-hover:text-primary-500 transition-colors mt-1" />
@@ -80,9 +94,9 @@ export default function Dashboard() {
                 2
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Add your plan document</h3>
+                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Find contract vs plan gaps</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
-                  Upload your SBC, SPD, or EOC to cross-reference against the contract. The AI identifies gaps between what the contract promises and what the plan document says.
+                  Upload the SBC, SPD, or EOC to compare what the contract says against what the plan document actually communicates to members.
                 </p>
               </div>
               <ArrowUpRight className="w-4 h-4 text-gray-200 group-hover:text-primary-500 transition-colors mt-1" />
@@ -97,9 +111,9 @@ export default function Dashboard() {
                 3
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Score your PBM disclosure</h3>
+                <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">Pressure test disclosure and recovery</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
-                  Upload your PBM&apos;s semiannual disclosure document. AI checks it against 20 DOL-required items and generates a completeness score with a gap report.
+                  Check the PBM&apos;s disclosures against DOL-required items so missing pricing, rebate, and spread data is visible before an audit cycle.
                 </p>
               </div>
               <ArrowUpRight className="w-4 h-4 text-gray-200 group-hover:text-primary-500 transition-colors mt-1" />
@@ -111,9 +125,9 @@ export default function Dashboard() {
                 4
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-semibold text-gray-900 mb-1">Export your report</h3>
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Export an executive readout</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
-                  Download a branded PDF report with executive summary, risk score, audit rights scorecard, compliance flags, and a draft audit letter — ready for your CFO or board.
+                  Download a report that leads with deal diagnosis, financial exposure, control gaps, and immediate actions for procurement, legal, or finance review.
                 </p>
               </div>
             </div>
@@ -175,43 +189,85 @@ export default function Dashboard() {
         <div className="pt-4 animate-fade-in">
           <div className="mb-10">
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
-            <p className="text-gray-400 mt-1">Your PBM contract analysis overview</p>
+            <p className="text-gray-400 mt-1">Decision-first view of your PBM deal quality, exposure, and next actions</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
             <MetricCard
-              icon={FileText}
-              label="Contracts Analyzed"
-              value={String(stats?.contracts_parsed || 0)}
-              trend="Analyzed"
-              trendUp={true}
+              icon={ShieldCheck}
+              label="PBM Deal Score"
+              value={hasContracts && latest?.deal_score != null ? String(latest.deal_score) : "—"}
+              trend={hasContracts && latest?.risk_level ? `${latest.risk_level} risk` : "Run analysis"}
+              trendUp={!hasContracts}
+              color="blue"
+            />
+            <MetricCard
+              icon={ScrollText}
+              label="Estimated Financial Exposure"
+              value={hasContracts ? (latest?.spread_exposure_estimate || "Directional") : "—"}
+              trend={hasContracts ? (latest?.financial_exposure_mode === "claims_backed" ? "Claims-backed" : "Directional") : "Awaiting deal data"}
+              trendUp={false}
               color="green"
             />
             <MetricCard
-              icon={ShieldCheck}
-              label="Active Modules"
-              value="7"
-              trend="Contract Reader"
+              icon={FileText}
+              label="Deals Reviewed"
+              value={String(stats?.contracts_parsed || 0)}
+              trend="Contracts analyzed"
               trendUp={true}
               color="blue"
             />
             <MetricCard
               icon={CalendarClock}
-              label="Compliance Items"
-              value="7"
-              trend="Tracked"
-              trendUp={true}
-              color="blue"
+              label="Immediate Actions"
+              value={hasContracts ? String(latest?.immediate_actions?.length || 3) : "0"}
+              trend={hasContracts ? "Ready" : "No contract yet"}
+              trendUp={hasContracts}
+              color="green"
             />
           </div>
 
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-10">
+            <div className="xl:col-span-2 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+              <h2 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Executive View</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  { title: "Deal Diagnosis", body: latest?.deal_diagnosis || "Run a contract analysis to generate a one-line diagnosis of the PBM structure." },
+                  { title: "Exposure", body: latest?.financial_exposure_summary || "Financial exposure will summarize rebate leakage, spread pricing, and specialty control once a contract is analyzed." },
+                  { title: "Priority", body: latest?.top_risks?.[0]?.title ? `Top live risk: ${latest.top_risks[0].title}.` : "Lead every review with rebate structure, spread, specialty control, and audit scope before administrative terms." },
+                ].map((item) => (
+                  <div key={item.title} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                    <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                    <p className="text-sm text-gray-600 mt-2 leading-relaxed">{item.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+              <h2 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Immediate Actions</h2>
+              <div className="space-y-3">
+                {(latest?.immediate_actions && latest.immediate_actions.length > 0 ? latest.immediate_actions : [
+                  "Review rebate definitions before relying on passthrough guarantees.",
+                  "Validate whether spread is prohibited, capped, or simply undisclosed.",
+                  "Check specialty routing and audit scope before renewal negotiations.",
+                ]).map((item, index) => (
+                  <div key={item} className="flex gap-3">
+                    <div className="w-6 h-6 rounded-full bg-primary-50 text-primary-600 text-xs font-bold flex items-center justify-center flex-shrink-0">{index + 1}</div>
+                    <p className="text-sm text-gray-600">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="mb-10">
-            <h2 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Continue Working</h2>
+            <h2 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Decision Workflows</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
-                { href: "/contracts", icon: FileText, label: "Plan Intelligence", sub: "Contracts & plan docs" },
-                { href: "/disclosure", icon: Search, label: "Disclosure Analyzer", sub: "DOL compliance scoring" },
-                { href: "/audit", icon: Mail, label: "Audit Letter", sub: "Generate with citations" },
+                { href: "/contracts", icon: FileText, label: "Deal Analysis", sub: "Contract economics and governance" },
+                { href: "/contracts", icon: Search, label: "Contract vs Plan Gaps", sub: "Cross-reference plan documents" },
+                { href: "/audit", icon: Mail, label: "Audit & Recovery", sub: "Generate letters and support follow-up" },
               ].map((item) => {
                 const Icon = item.icon;
                 return (

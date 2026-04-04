@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
 import StatusBadge from "@/components/StatusBadge";
@@ -58,6 +58,10 @@ interface AnalysisExtras {
   };
   eligible_rebate_definition?: EligibleRebateDefinition;
   dispute_resolution?: DisputeResolution;
+  statistical_extrapolation_rights?: {
+    found: boolean;
+    details?: string;
+  };
   statistical_extrapolation?: {
     found: boolean;
     details?: string;
@@ -96,6 +100,49 @@ interface CrossRefResult {
   missing_from_contract?: string[];
   missing_from_plan_doc?: string[];
   _generated_by?: string;
+}
+
+interface WeightedAssessment {
+  deal_score?: number;
+  weighted_risk_score?: number;
+  risk_level?: string;
+  methodology?: string;
+  tier_scores?: { tier: string; score: number; weight: number }[];
+}
+
+interface TopRisk {
+  title: string;
+  tier: number;
+  severity: "high" | "medium" | "low";
+  why_it_matters: string;
+  recommendation: string;
+}
+
+interface FinancialExposureEntry {
+  level: string;
+  estimate: string;
+  driver: string;
+}
+
+interface FinancialExposure {
+  mode?: string;
+  summary?: string;
+  rebate_leakage?: FinancialExposureEntry;
+  spread_exposure?: FinancialExposureEntry;
+  specialty_control?: FinancialExposureEntry;
+  claims_context?: {
+    claims_count?: number;
+    claims_filename?: string;
+    date_range_start?: string;
+    date_range_end?: string;
+  };
+}
+
+interface ControlMapItem {
+  lever: string;
+  controller: string;
+  assessment: string;
+  implication: string;
 }
 
 const demoTerms: ExtractedTerm[] = [
@@ -284,7 +331,7 @@ function mapApiToTerms(a: Record<string, Record<string, unknown>>): ExtractedTer
   };
   const terms: ExtractedTerm[] = [];
   for (const [key, val] of Object.entries(a)) {
-    if (!val || typeof val !== "object" || key === "compliance_flags" || key === "overall_risk_score" || key === "summary" || key === "audit_rights" || key === "eligible_rebate_definition" || key === "dispute_resolution" || key === "statistical_extrapolation" || key === "linked_findings" || key === "economic_linkages" || key === "specialty_channel") continue;
+    if (!val || typeof val !== "object" || key === "compliance_flags" || key === "overall_risk_score" || key === "summary" || key === "audit_rights" || key === "eligible_rebate_definition" || key === "dispute_resolution" || key === "statistical_extrapolation" || key === "statistical_extrapolation_rights" || key === "linked_findings" || key === "economic_linkages" || key === "specialty_channel") continue;
     // Use favorability from AI if available, fall back to heuristic
     const favorability = (val.favorability as string) || "";
     let status: "good" | "warning" | "critical";
@@ -311,6 +358,22 @@ function mapApiToTerms(a: Record<string, Record<string, unknown>>): ExtractedTer
   return terms.length > 0 ? terms : [];
 }
 
+function riskLevelStyles(level?: string) {
+  if (level === "high") return "bg-red-50 border-red-200 text-red-700";
+  if (level === "low") return "bg-emerald-50 border-emerald-200 text-emerald-700";
+  return "bg-amber-50 border-amber-200 text-amber-700";
+}
+
+function riskBadgeStyles(level?: string) {
+  if (level === "high") return "bg-red-100 text-red-800";
+  if (level === "low") return "bg-emerald-100 text-emerald-800";
+  return "bg-amber-100 text-amber-800";
+}
+
+function formatRiskLevel(level?: string) {
+  return (level || "moderate").replace(/^\w/, (c) => c.toUpperCase());
+}
+
 export default function ContractsPage() {
   usePageTitle("Contract Intake");
   const [loading, setLoading] = useState(false);
@@ -318,7 +381,6 @@ export default function ContractsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
   const [sourceText, setSourceText] = useState<string | null>(null);
-  const hasAutoLoaded = useRef(false);
 
   // New analysis extras state
   const [auditChecklist, setAuditChecklist] = useState<AuditChecklistItem[] | null>(null);
@@ -352,7 +414,9 @@ export default function ContractsPage() {
     if (a.dispute_resolution) {
       setDisputeResolution(a.dispute_resolution);
     }
-    if (a.statistical_extrapolation) {
+    if (a.statistical_extrapolation_rights) {
+      setStatisticalExtrapolation(a.statistical_extrapolation_rights);
+    } else if (a.statistical_extrapolation) {
       setStatisticalExtrapolation(a.statistical_extrapolation);
     }
   };
@@ -489,14 +553,6 @@ export default function ContractsPage() {
     }
   };
 
-  // Don't auto-load sample contract — wait for user to upload or click the button
-  // useEffect(() => {
-  //   if (!hasAutoLoaded.current) {
-  //     hasAutoLoaded.current = true;
-  //     handleSampleContract();
-  //   }
-  // }, []);
-
   const handleSampleContract = async () => {
     setLoading(true);
     setError(null);
@@ -535,6 +591,15 @@ export default function ContractsPage() {
         critical: terms.filter((t) => t.status === "critical").length,
       }
     : null;
+
+  const weightedAssessment = (rawContractAnalysis?.weighted_assessment as WeightedAssessment | undefined) || undefined;
+  const topRisks = ((rawContractAnalysis?.top_risks as TopRisk[] | undefined) || []).slice(0, 3);
+  const financialExposure = (rawContractAnalysis?.financial_exposure as FinancialExposure | undefined) || undefined;
+  const controlMap = ((rawContractAnalysis?.control_map as ControlMapItem[] | undefined) || []).slice(0, 5);
+  const immediateActions = ((rawContractAnalysis?.immediate_actions as string[] | undefined) || []).slice(0, 3);
+  const linkedFindings = ((rawContractAnalysis?.linked_findings as Array<Record<string, string>> | undefined) || []).slice(0, 3);
+  const dealDiagnosis = (rawContractAnalysis?.deal_diagnosis as string | undefined) || (rawContractAnalysis?.summary as string | undefined) || null;
+  const auditImplication = (rawContractAnalysis?.audit_implication as string | undefined) || null;
 
   const disputeRiskColor = (level?: string) => {
     if (level === "high") return "text-red-700 bg-red-50 border-red-200";
@@ -634,32 +699,21 @@ export default function ContractsPage() {
 
       {terms && !loading && (
         <>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-emerald-700">
-                {complianceCount!.good}
-              </p>
-              <p className="text-sm text-emerald-600">Employer-Favorable</p>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-amber-700">
-                {complianceCount!.warning}
-              </p>
-              <p className="text-sm text-amber-600">Neutral</p>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-red-700">
-                {complianceCount!.critical}
-              </p>
-              <p className="text-sm text-red-600">PBM-Favorable</p>
-            </div>
-
-            {/* Export PDF Button */}
-            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-4 flex items-center justify-center">
+          <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600 mb-2">Deal Diagnosis</p>
+                <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+                  {dealDiagnosis || "PBM contract analysis complete"}
+                </h2>
+                <p className="text-sm text-gray-500 mt-2">
+                  Lead with the economics and control terms first. Detailed clause extraction and audit support remain below as supporting evidence.
+                </p>
+              </div>
               <button
                 onClick={handleExportPDF}
                 disabled={exporting || !rawContractAnalysis}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {exporting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -668,6 +722,214 @@ export default function ContractsPage() {
                 )}
                 {exporting ? "Generating PDF..." : "Export PDF Report"}
               </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+            <div className={`rounded-xl border p-5 ${riskLevelStyles(weightedAssessment?.risk_level)}`}>
+              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">PBM Deal Score</p>
+              <p className="text-3xl font-bold">{weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0))}</p>
+              <p className="text-sm mt-1">{formatRiskLevel(weightedAssessment?.risk_level)} risk structure</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Estimated Financial Exposure</p>
+              <p className="text-lg font-bold text-gray-900">
+                {financialExposure?.spread_exposure?.estimate || "Directional only"}
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                {financialExposure?.summary || "Translate rebate leakage, spread, and specialty control into directional exposure bands."}
+              </p>
+              {financialExposure?.mode && (
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold mt-3 ${
+                  financialExposure.mode === "claims_backed" ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"
+                }`}>
+                  {financialExposure.mode === "claims_backed" ? "Claims-backed estimate" : "Directional estimate"}
+                </span>
+              )}
+            </div>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-red-700 mb-2">Top Risk Count</p>
+              <p className="text-3xl font-bold text-red-700">{topRisks.length || complianceCount!.critical}</p>
+              <p className="text-sm text-red-700 mt-1">Primary cost and control drivers surfaced first</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Support Detail</p>
+              <p className="text-3xl font-bold text-gray-900">{terms.length}</p>
+              <p className="text-sm text-gray-600 mt-1">Clause findings remain available below</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+            <div className="xl:col-span-2 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Top 3 Risks</h3>
+                {weightedAssessment?.methodology && (
+                  <span className="text-xs text-gray-500">{weightedAssessment.methodology}</span>
+                )}
+              </div>
+              <div className="divide-y divide-gray-100">
+                {topRisks.length > 0 ? topRisks.map((risk, i) => (
+                  <div key={`${risk.title}-${i}`} className="px-6 py-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-primary-600">Tier {risk.tier}</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(risk.severity)}`}>
+                            {risk.severity.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-base font-semibold text-gray-900 mt-2">{risk.title}</p>
+                        <p className="text-sm text-gray-600 mt-1">{risk.why_it_matters}</p>
+                        <p className="text-sm text-primary-600 font-medium mt-2">{risk.recommendation}</p>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="px-6 py-5 text-sm text-gray-500">Top risks will appear here after contract analysis.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Immediate Actions</h3>
+                <div className="space-y-3">
+                  {(immediateActions.length > 0 ? immediateActions : [
+                    "Renegotiate rebate definitions before relying on stated passthrough.",
+                    "Require pricing transparency or pass-through claims economics.",
+                    "Expand audit and specialty control terms before renewal."
+                  ]).map((action, i) => (
+                    <div key={`${action}-${i}`} className="flex gap-3">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-50 text-primary-700 text-xs font-bold flex-shrink-0">{i + 1}</span>
+                      <p className="text-sm text-gray-700">{action}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Weighted Tier Scores</h3>
+                <div className="space-y-3">
+                  {(weightedAssessment?.tier_scores || []).map((tier) => (
+                    <div key={tier.tier}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="font-medium text-gray-800">{tier.tier}</span>
+                        <span className="text-gray-500">{tier.score}% risk</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div className={`h-full ${
+                          tier.score >= 65 ? "bg-red-500" : tier.score >= 35 ? "bg-amber-500" : "bg-emerald-500"
+                        }`} style={{ width: `${Math.min(tier.score, 100)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {financialExposure && (
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Financial Exposure</h3>
+                {financialExposure.summary && <p className="text-sm text-gray-500 mt-1">{financialExposure.summary}</p>}
+                {financialExposure.mode === "claims_backed" && financialExposure.claims_context?.claims_count && (
+                  <p className="text-xs text-emerald-700 mt-2">
+                    Based on {financialExposure.claims_context.claims_count.toLocaleString()} uploaded claims
+                    {financialExposure.claims_context.claims_filename ? ` from ${financialExposure.claims_context.claims_filename}` : ""}
+                    {financialExposure.claims_context.date_range_start && financialExposure.claims_context.date_range_end ? ` (${financialExposure.claims_context.date_range_start} to ${financialExposure.claims_context.date_range_end})` : ""}.
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+                {[
+                  { label: "Rebate Leakage", item: financialExposure.rebate_leakage },
+                  { label: "Spread Exposure", item: financialExposure.spread_exposure },
+                  { label: "Specialty Control", item: financialExposure.specialty_control },
+                ].map(({ label, item }) => item ? (
+                  <div key={label} className="p-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-gray-900">{label}</p>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(item.level)}`}>
+                        {item.level.toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">{item.estimate}</p>
+                    <p className="text-sm text-gray-600 mt-2">{item.driver}</p>
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+          )}
+
+          {controlMap.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Control Map</h3>
+                <p className="text-sm text-gray-500 mt-1">Who controls the key cost and governance levers in this contract.</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {controlMap.map((item, i) => (
+                  <div key={`${item.lever}-${i}`} className="px-6 py-4 grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr_1.4fr_1.6fr] gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Lever</p>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{item.lever}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Controller</p>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{item.controller}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Assessment</p>
+                      <p className="text-sm text-gray-700 mt-1">{item.assessment}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Implication</p>
+                      <p className="text-sm text-gray-700 mt-1">{item.implication}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(auditImplication || linkedFindings.length > 0) && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+              {auditImplication && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+                  <h3 className="text-sm font-bold text-red-800 uppercase tracking-wider mb-2">Audit Implication</h3>
+                  <p className="text-sm text-red-700">{auditImplication}</p>
+                </div>
+              )}
+              {linkedFindings.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Economic Linkages</h3>
+                  <div className="space-y-3">
+                    {linkedFindings.map((finding, i) => (
+                      <div key={`${finding.title}-${i}`} className="rounded-lg bg-gray-50 border border-gray-100 p-4">
+                        <p className="text-sm font-medium text-gray-900">{finding.title}</p>
+                        {finding.explanation && <p className="text-sm text-gray-600 mt-1">{finding.explanation}</p>}
+                        {finding.economic_impact && <p className="text-sm text-primary-600 mt-2">{finding.economic_impact}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+              <p className="text-2xl font-bold text-emerald-700">{complianceCount!.good}</p>
+              <p className="text-sm text-emerald-600">Employer-Favorable Clauses</p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+              <p className="text-2xl font-bold text-amber-700">{complianceCount!.warning}</p>
+              <p className="text-sm text-amber-600">Neutral Clauses</p>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+              <p className="text-2xl font-bold text-red-700">{complianceCount!.critical}</p>
+              <p className="text-sm text-red-600">PBM-Favorable Clauses</p>
             </div>
           </div>
 
