@@ -10,3 +10,4 @@ node_modules/
 .DS_Store
 backend/.venv/
 backend/data/cms/*.csv
+.vercel

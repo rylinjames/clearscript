@@ -1,0 +1,9 @@
+.git
+.agents
+backend
+frontend/.next
+frontend/node_modules
+frontend/.vercel
+frontend/.env.local
+clearscript.xlsx
+clearscript copy.xlsx
