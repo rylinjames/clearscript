@@ -311,6 +311,78 @@ TERM_TITLES = {
     "statistical_extrapolation_rights": "Statistical extrapolation",
 }
 
+BENCHMARK_LIBRARY = {
+    "rebate_passthrough": {
+        "category": "Rebates",
+        "benchmark_label": "Full manufacturer compensation passthrough",
+        "benchmark": "Employer-favorable benchmark language ties passthrough to all manufacturer compensation, not only payments labeled as rebates.",
+        "source": "NASHP Model PBM Contract Terms; NASTAD PBM Contract Language Bank",
+    },
+    "eligible_rebate_definition": {
+        "category": "Rebates",
+        "benchmark_label": "Broad eligible rebate definition",
+        "benchmark": "Benchmark language includes admin fees, volume incentives, price protection, data fees, and similar manufacturer payments in passthrough.",
+        "source": "NASHP Model PBM Contract Terms; NASTAD PBM Contract Language Bank",
+    },
+    "spread_pricing": {
+        "category": "Pricing",
+        "benchmark_label": "Pass-through claim pricing",
+        "benchmark": "Employer-favorable benchmark prohibits retained spread and requires claim-level transparency between plan charge and pharmacy reimbursement.",
+        "source": "Public state PBM contract benchmarks; Ohio and Pennsylvania PBM audit findings",
+    },
+    "specialty_channel": {
+        "category": "Specialty",
+        "benchmark_label": "Employer optionality over specialty channel",
+        "benchmark": "Benchmark structure preserves employer approval over specialty routing, vendor choice, and specialty pricing transparency.",
+        "source": "Public state PBM contract benchmarks; FTC PBM reports",
+    },
+    "audit_rights": {
+        "category": "Audit",
+        "benchmark_label": "Full audit and data access",
+        "benchmark": "Benchmark language extends audit rights to manufacturer contracts, pharmacy reimbursement, network agreements, and specialty economics.",
+        "source": "NASTAD PBM Contract Language Bank; public payer audit rights benchmarks",
+    },
+    "mac_pricing": {
+        "category": "Pricing",
+        "benchmark_label": "Transparent MAC process",
+        "benchmark": "Employer-favorable benchmark gives visibility into MAC methodology, updates, and appeals handling.",
+        "source": "Public payer PBM audit benchmarks",
+    },
+    "formulary_clauses": {
+        "category": "Formulary",
+        "benchmark_label": "Employer oversight of formulary changes",
+        "benchmark": "Benchmark language requires notice, justification, and employer approval for material mid-year formulary changes.",
+        "source": "NASHP Model PBM Contract Terms",
+    },
+    "termination_provisions": {
+        "category": "Administrative",
+        "benchmark_label": "Low-friction exit rights",
+        "benchmark": "Benchmark language allows short notice termination without liquidated damages and preserves transition support.",
+        "source": "Public state procurement contract benchmarks",
+    },
+    "gag_clauses": {
+        "category": "Governance",
+        "benchmark_label": "Advisor disclosure rights",
+        "benchmark": "Benchmark language permits sharing pricing and rebate data with advisors, auditors, and counsel.",
+        "source": "CAA 2021 gag clause standards",
+    },
+    "statistical_extrapolation_rights": {
+        "category": "Audit",
+        "benchmark_label": "Audit recovery through extrapolation",
+        "benchmark": "Benchmark language permits extrapolating validated audit errors across the broader claims population.",
+        "source": "Public payer audit rights benchmarks",
+    },
+}
+
+EXPOSURE_SUPPORT_MAP = {
+    "rebate_passthrough": "rebate_leakage",
+    "eligible_rebate_definition": "rebate_leakage",
+    "spread_pricing": "spread_exposure",
+    "specialty_channel": "specialty_control",
+    "formulary_clauses": "rebate_leakage",
+    "mac_pricing": "spread_exposure",
+}
+
 
 def _normalize_favorability(value) -> str:
     text = str(value or "").lower()
@@ -339,6 +411,25 @@ def _term_penalty(term: dict, key: str) -> float:
         if found is False:
             return 0.85
     return 0.0
+
+
+def _ordered_term_scores(analysis: dict) -> list[dict]:
+    ordered = []
+    for key, weight in TIER_WEIGHTS.items():
+        term = analysis.get(key)
+        if not isinstance(term, dict):
+            continue
+        penalty = _term_penalty(term, key)
+        ordered.append({
+            "key": key,
+            "term": term,
+            "penalty": penalty,
+            "tier": TIER_LABELS.get(key, 3),
+            "weight": weight,
+            "weighted_score": weight * penalty,
+        })
+    ordered.sort(key=lambda item: item["weighted_score"], reverse=True)
+    return ordered
 
 
 def _financial_exposure_for(analysis: dict) -> dict:
@@ -502,6 +593,84 @@ def _control_map_for(analysis: dict) -> list[dict]:
     ]
 
 
+def _control_posture_for(analysis: dict) -> dict:
+    control_map = analysis.get("control_map")
+    if not isinstance(control_map, list) or not control_map:
+        control_map = _control_map_for(analysis)
+
+    pbm_controlled = [item for item in control_map if str(item.get("controller", "")).lower() == "pbm"]
+    shared = [item for item in control_map if str(item.get("controller", "")).lower() == "shared"]
+    total = len(control_map) or 1
+
+    if len(pbm_controlled) >= 4:
+        label = "PBM-controlled"
+        level = "high"
+        summary = "PBM controls most of the economic and governance levers, so leakage estimates should be read as consequences of structural control rather than isolated clause defects."
+    elif len(pbm_controlled) >= 2:
+        label = "Mixed control"
+        level = "moderate"
+        summary = "Control is split, but the PBM still holds enough leverage to influence pricing, rebates, or specialty economics without full employer verification."
+    else:
+        label = "Shared / employer-leaning"
+        level = "low"
+        summary = "Core economic levers are not concentrated solely with the PBM, reducing structural leakage risk."
+
+    return {
+        "label": label,
+        "level": level,
+        "headline": f"{label} posture: PBM controls {len(pbm_controlled)} of {total} core levers",
+        "summary": summary,
+        "pbm_controlled_levers": len(pbm_controlled),
+        "shared_levers": len(shared),
+    }
+
+
+def _structural_risk_override_for(analysis: dict) -> dict:
+    ordered = _ordered_term_scores(analysis)
+    penalties = {item["key"]: item["penalty"] for item in ordered}
+
+    severe_tier1_keys = [
+        key for key in ["rebate_passthrough", "eligible_rebate_definition", "spread_pricing", "specialty_channel", "audit_rights"]
+        if penalties.get(key, 0) >= 0.85
+    ]
+
+    driver_labels = [TERM_TITLES.get(key, key.replace("_", " ")) for key in severe_tier1_keys]
+
+    floor = 0
+    level = "low"
+    rationale = "No structural override triggered."
+
+    if len(severe_tier1_keys) >= 4:
+        floor = 88
+        level = "high"
+        rationale = "Multiple Tier 1 economics and control failures outweigh any secondary employer-friendly terms."
+    elif len(severe_tier1_keys) >= 3:
+        floor = 82
+        level = "high"
+        rationale = "Three or more Tier 1 drivers are materially PBM-favorable, so the contract should not read as balanced."
+    elif (
+        penalties.get("eligible_rebate_definition", 0) >= 0.85
+        and penalties.get("spread_pricing", 0) >= 0.85
+        and penalties.get("audit_rights", 0) >= 0.45
+    ):
+        floor = 78
+        level = "high"
+        rationale = "Rebate leakage, spread pricing, and limited audit rights combine into a structurally PBM-favorable deal."
+    elif len(severe_tier1_keys) >= 2:
+        floor = 70
+        level = "moderate"
+        rationale = "Two Tier 1 economics/control failures create a contract structure that is more adverse than an equal-weight score suggests."
+
+    return {
+        "triggered": floor > 0,
+        "level": level,
+        "minimum_weighted_risk_score": floor,
+        "drivers": driver_labels[:4],
+        "headline": "Structural risk override triggered" if floor > 0 else "Weighted scoring only",
+        "rationale": rationale,
+    }
+
+
 def _audit_implication_for(analysis: dict) -> str:
     audit = analysis.get("audit_rights", {}) if isinstance(analysis, dict) else {}
     details = str(audit.get("details", "")).lower()
@@ -517,6 +686,90 @@ def _audit_implication_for(analysis: dict) -> str:
     if not audit or "limited" in details or "not include" in details or "claims data only" in details:
         return "Current audit language leaves the plan sponsor unable to verify pharmacy reimbursement, full manufacturer compensation, network economics, or specialty channel performance."
     return "Audit language appears broader, but pricing, rebate, and specialty data should still be tested in practice."
+
+
+def _supporting_detail_for_observation(key: str, analysis: dict) -> str | None:
+    exposure = analysis.get("financial_exposure", {}) if isinstance(analysis, dict) else {}
+    if not isinstance(exposure, dict):
+        return None
+
+    if key == "audit_rights":
+        return analysis.get("audit_implication")
+
+    exposure_key = EXPOSURE_SUPPORT_MAP.get(key)
+    item = exposure.get(exposure_key) if exposure_key else None
+    if isinstance(item, dict) and item.get("estimate"):
+        return f"Supporting leakage estimate: {item.get('estimate')}."
+    return None
+
+
+def _derive_benchmark_observations(analysis: dict) -> list[dict]:
+    ordered = _ordered_term_scores(analysis)
+    observations = []
+
+    for item in ordered:
+        key = item["key"]
+        penalty = item["penalty"]
+        if penalty <= 0:
+            continue
+        benchmark = BENCHMARK_LIBRARY.get(key)
+        if not benchmark:
+            continue
+        term = item["term"]
+        observations.append({
+            "kind": "consideration",
+            "title": f"{TERM_TITLES.get(key, key.replace('_', ' ').title())} falls short of benchmark",
+            "category": benchmark["category"],
+            "tier": item["tier"],
+            "severity": "high" if penalty >= 0.85 else "medium",
+            "benchmark_label": benchmark["benchmark_label"],
+            "benchmark": benchmark["benchmark"],
+            "benchmark_source": benchmark["source"],
+            "observation": term.get("details", "This term materially shifts economics or control toward the PBM."),
+            "implication": next((entry.get("implication") for entry in analysis.get("control_map", []) if isinstance(entry, dict) and entry.get("lever", "").lower().startswith(benchmark["category"].split("/")[0].lower())), "") or "This term changes the economic or governance balance in favor of the PBM.",
+            "recommendation": _derive_top_risks({key: term})[0]["recommendation"] if _derive_top_risks({key: term}) else "Renegotiate this term.",
+            "supporting_detail": _supporting_detail_for_observation(key, analysis),
+        })
+        if len([obs for obs in observations if obs["kind"] == "consideration"]) >= 3:
+            break
+
+    strength_candidates = []
+    for item in ordered:
+        key = item["key"]
+        term = item["term"]
+        favorability = _normalize_favorability(term.get("favorability"))
+        if favorability == "employer_favorable" or item["penalty"] == 0:
+            benchmark = BENCHMARK_LIBRARY.get(key)
+            if benchmark and term.get("found") is not False:
+                strength_candidates.append({
+                    "kind": "strength",
+                    "title": f"{TERM_TITLES.get(key, key.replace('_', ' ').title())} is closer to benchmark",
+                    "category": benchmark["category"],
+                    "tier": item["tier"],
+                    "severity": "low",
+                    "benchmark_label": benchmark["benchmark_label"],
+                    "benchmark": benchmark["benchmark"],
+                    "benchmark_source": benchmark["source"],
+                    "observation": term.get("details", "This term is closer to an employer-favorable benchmark."),
+                    "implication": "This is not the main source of economic leakage and should be preserved while higher-impact terms are renegotiated.",
+                    "recommendation": "Preserve this language while renegotiating higher-impact terms.",
+                    "supporting_detail": None,
+                })
+    if strength_candidates:
+        observations.append(strength_candidates[0])
+
+    return observations
+
+
+def _recommendations_from_observations(observations: list[dict]) -> list[str]:
+    recommendations = []
+    for observation in observations:
+        if observation.get("kind") != "consideration":
+            continue
+        recommendation = str(observation.get("recommendation", "")).strip()
+        if recommendation and recommendation not in recommendations:
+            recommendations.append(recommendation)
+    return recommendations[:3]
 
 
 def _derive_top_risks(analysis: dict) -> list[dict]:
@@ -571,7 +824,6 @@ def enrich_contract_analysis(analysis: dict) -> dict:
         tier_buckets[tier]["weight"] += weight
 
     weighted_score = round((weighted_penalty / total_weight) * 100)
-    analysis["overall_risk_score"] = max(int(analysis.get("overall_risk_score", 0) or 0), weighted_score)
 
     top_risks = analysis.get("top_risks")
     if not isinstance(top_risks, list) or not top_risks:
@@ -587,11 +839,26 @@ def enrich_contract_analysis(analysis: dict) -> dict:
     if not analysis.get("control_map"):
         analysis["control_map"] = _control_map_for(analysis)
 
+    if not analysis.get("control_posture"):
+        analysis["control_posture"] = _control_posture_for(analysis)
+
+    if not analysis.get("structural_risk_override"):
+        analysis["structural_risk_override"] = _structural_risk_override_for(analysis)
+
     if not analysis.get("audit_implication"):
         analysis["audit_implication"] = _audit_implication_for(analysis)
 
+    if not analysis.get("benchmark_observations"):
+        analysis["benchmark_observations"] = _derive_benchmark_observations(analysis)
+
+    if not analysis.get("benchmark_recommendations"):
+        analysis["benchmark_recommendations"] = _recommendations_from_observations(analysis.get("benchmark_observations", []))
+
     if not analysis.get("immediate_actions"):
-        analysis["immediate_actions"] = [risk["recommendation"] for risk in top_risks[:3]]
+        analysis["immediate_actions"] = (
+            analysis.get("benchmark_recommendations")
+            or [risk["recommendation"] for risk in top_risks[:3]]
+        )
 
     if not analysis.get("deal_diagnosis"):
         drivers = []
@@ -608,10 +875,16 @@ def enrich_contract_analysis(analysis: dict) -> dict:
             diagnosis += " with " + ", ".join(drivers[:3]) + "."
         analysis["deal_diagnosis"] = diagnosis
 
+    structural_override = analysis.get("structural_risk_override", {})
+    override_floor = int(structural_override.get("minimum_weighted_risk_score", 0) or 0) if isinstance(structural_override, dict) else 0
+    adjusted_weighted_score = max(weighted_score, override_floor)
+    analysis["overall_risk_score"] = max(int(analysis.get("overall_risk_score", 0) or 0), adjusted_weighted_score)
+
     analysis["weighted_assessment"] = {
-        "deal_score": max(0, 100 - weighted_score),
-        "weighted_risk_score": weighted_score,
-        "risk_level": "high" if weighted_score >= 65 else "moderate" if weighted_score >= 35 else "low",
+        "deal_score": max(0, 100 - adjusted_weighted_score),
+        "base_weighted_risk_score": weighted_score,
+        "weighted_risk_score": adjusted_weighted_score,
+        "risk_level": "high" if adjusted_weighted_score >= 65 else "moderate" if adjusted_weighted_score >= 35 else "low",
         "tier_scores": [
             {
                 "tier": bucket["label"],
@@ -620,7 +893,11 @@ def enrich_contract_analysis(analysis: dict) -> dict:
             }
             for bucket in tier_buckets.values()
         ],
-        "methodology": "Tier 1 economics and control drivers outweigh administrative terms.",
+        "methodology": (
+            "Tier 1 economics and control drivers outweigh administrative terms."
+            + (" Structural override applied because multiple Tier 1 failures would otherwise look artificially balanced." if override_floor and override_floor > weighted_score else "")
+        ),
+        "structural_override_triggered": bool(override_floor and override_floor > weighted_score),
     }
 
     return analysis
@@ -642,22 +919,26 @@ def _mock_contract_analysis() -> dict:
         "rebate_passthrough": {
             "found": True,
             "percentage": "85% of eligible rebates",
+            "favorability": "pbm_favorable",
             "details": "Contract specifies 85% passthrough but defines 'eligible rebates' narrowly — excludes admin fees, manufacturer volume bonuses, and price protection rebates. Effective passthrough likely 55-65%."
         },
         "spread_pricing": {
             "found": True,
             "caps": "No explicit caps found",
+            "favorability": "pbm_favorable",
             "details": "Contract allows PBM to retain difference between plan-billed amount and pharmacy reimbursement. No transparency requirements on spread amounts. This is a significant cost concern."
         },
         "formulary_clauses": {
             "found": True,
             "change_notification_days": 60,
+            "favorability": "pbm_favorable",
             "details": "PBM may make mid-year formulary changes with 60-day notice. No requirement to demonstrate clinical justification. No employer approval needed for tier changes."
         },
         "audit_rights": {
             "found": True,
             "frequency": "Once per contract year",
             "scope": "Limited to claims data only",
+            "favorability": "pbm_favorable",
             "details": "Audit limited to claims data — does not include rebate contracts, pharmacy reimbursement rates, or spread pricing data. 90-day advance notice required. PBM selects audit firm from approved list.",
             "checklist": {
                 "ndc_level_audit": {"found": False, "details": "Contract does not guarantee NDC-level audit access — only J-code summaries available."},
@@ -677,16 +958,27 @@ def _mock_contract_analysis() -> dict:
             "found": True,
             "update_frequency": "Monthly",
             "appeal_rights": False,
+            "favorability": "pbm_favorable",
             "details": "MAC list updated monthly but no appeal process for pharmacies. No requirement to disclose MAC list to plan sponsor."
+        },
+        "specialty_channel": {
+            "found": True,
+            "external_routing_rights": False,
+            "vendor_channel_optionality": False,
+            "pricing_transparency": False,
+            "favorability": "pbm_favorable",
+            "details": "All specialty medications must flow through the PBM-owned specialty channel. The employer has no routing flexibility, no ability to approve an external vendor, and no transparent specialty pricing requirement."
         },
         "termination_provisions": {
             "found": True,
             "notice_days": 180,
             "penalties": "Liquidated damages equal to 50% of remaining contract value",
+            "favorability": "pbm_favorable",
             "details": "Six-month notice required. Early termination triggers liquidated damages clause. Effectively locks plan sponsor into 3-year term."
         },
         "gag_clauses": {
             "found": True,
+            "favorability": "pbm_favorable",
             "details": "Section 14.2 contains confidentiality provisions that may restrict plan sponsor from sharing pricing data with consultants or other vendors. Potential CAA violation."
         },
         "eligible_rebate_definition": {
@@ -696,15 +988,18 @@ def _mock_contract_analysis() -> dict:
             "includes_volume_bonuses": False,
             "includes_price_protection": False,
             "narrow_definition_flag": True,
+            "favorability": "pbm_favorable",
             "details": "CRITICAL: The contract defines 'eligible rebates' to exclude admin fees, volume bonuses, and price protection — three major categories of manufacturer payments. The stated 85% passthrough applies only to this narrow definition. Effective passthrough of total manufacturer payments is estimated at 55-65%."
         },
         "dispute_resolution": {
             "found": True,
             "mechanism": "arbitration",
+            "favorability": "pbm_favorable",
             "details": "Section 18.3 requires binding arbitration with an arbitrator selected from a PBM-approved panel. Venue is PBM's home jurisdiction. No right to discovery beyond document production. This is PBM-favorable — litigation in court would allow broader discovery and public accountability."
         },
         "statistical_extrapolation_rights": {
             "found": False,
+            "favorability": "pbm_favorable",
             "details": "Contract is silent on statistical extrapolation. Without this right, the employer can only recover errors found in specifically audited claims, not extrapolate error rates to the full claims universe. This dramatically limits audit recovery potential."
         },
         "compliance_flags": [

@@ -145,6 +145,39 @@ interface ControlMapItem {
   implication: string;
 }
 
+interface ControlPosture {
+  label: string;
+  level: string;
+  headline: string;
+  summary: string;
+  pbm_controlled_levers?: number;
+  shared_levers?: number;
+}
+
+interface StructuralRiskOverride {
+  triggered: boolean;
+  level: string;
+  minimum_weighted_risk_score?: number;
+  drivers?: string[];
+  headline: string;
+  rationale: string;
+}
+
+interface BenchmarkObservation {
+  kind: "strength" | "consideration";
+  title: string;
+  category: string;
+  tier: number;
+  severity: "high" | "medium" | "low";
+  benchmark_label: string;
+  benchmark: string;
+  benchmark_source: string;
+  observation: string;
+  implication: string;
+  recommendation: string;
+  supporting_detail?: string | null;
+}
+
 const demoTerms: ExtractedTerm[] = [
   { clause: "Rebate Passthrough Guarantee", value: "100% passthrough", status: "good", note: "Industry best practice" },
   { clause: "Spread Pricing Allowance", value: "Not prohibited", status: "critical", note: "No spread pricing ban -- PBM may retain spread" },
@@ -367,6 +400,11 @@ function riskLevelStyles(level?: string) {
 function riskBadgeStyles(level?: string) {
   if (level === "high") return "bg-red-100 text-red-800";
   if (level === "low") return "bg-emerald-100 text-emerald-800";
+  return "bg-amber-100 text-amber-800";
+}
+
+function observationKindStyles(kind?: string) {
+  if (kind === "strength") return "bg-emerald-100 text-emerald-800";
   return "bg-amber-100 text-amber-800";
 }
 
@@ -596,6 +634,9 @@ export default function ContractsPage() {
   const topRisks = ((rawContractAnalysis?.top_risks as TopRisk[] | undefined) || []).slice(0, 3);
   const financialExposure = (rawContractAnalysis?.financial_exposure as FinancialExposure | undefined) || undefined;
   const controlMap = ((rawContractAnalysis?.control_map as ControlMapItem[] | undefined) || []).slice(0, 5);
+  const controlPosture = (rawContractAnalysis?.control_posture as ControlPosture | undefined) || undefined;
+  const structuralRiskOverride = (rawContractAnalysis?.structural_risk_override as StructuralRiskOverride | undefined) || undefined;
+  const benchmarkObservations = ((rawContractAnalysis?.benchmark_observations as BenchmarkObservation[] | undefined) || []).slice(0, 4);
   const immediateActions = ((rawContractAnalysis?.immediate_actions as string[] | undefined) || []).slice(0, 3);
   const linkedFindings = ((rawContractAnalysis?.linked_findings as Array<Record<string, string>> | undefined) || []).slice(0, 3);
   const dealDiagnosis = (rawContractAnalysis?.deal_diagnosis as string | undefined) || (rawContractAnalysis?.summary as string | undefined) || null;
@@ -731,136 +772,26 @@ export default function ContractsPage() {
               <p className="text-3xl font-bold">{weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0))}</p>
               <p className="text-sm mt-1">{formatRiskLevel(weightedAssessment?.risk_level)} risk structure</p>
             </div>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Estimated Financial Exposure</p>
-              <p className="text-lg font-bold text-gray-900">
-                {financialExposure?.spread_exposure?.estimate || "Directional only"}
-              </p>
-              <p className="text-sm text-gray-600 mt-1">
-                {financialExposure?.summary || "Translate rebate leakage, spread, and specialty control into directional exposure bands."}
-              </p>
-              {financialExposure?.mode && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold mt-3 ${
-                  financialExposure.mode === "claims_backed" ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"
-                }`}>
-                  {financialExposure.mode === "claims_backed" ? "Claims-backed estimate" : "Directional estimate"}
-                </span>
-              )}
+            <div className={`rounded-xl border p-5 ${riskLevelStyles(controlPosture?.level)}`}>
+              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">Control Posture</p>
+              <p className="text-lg font-bold">{controlPosture?.label || "Pending analysis"}</p>
+              <p className="text-sm mt-1">{controlPosture?.summary || "Lead with who controls pricing, rebates, specialty, and audit rights."}</p>
             </div>
-            <div className="rounded-xl border border-red-200 bg-red-50 p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-red-700 mb-2">Top Risk Count</p>
-              <p className="text-3xl font-bold text-red-700">{topRisks.length || complianceCount!.critical}</p>
-              <p className="text-sm text-red-700 mt-1">Primary cost and control drivers surfaced first</p>
+            <div className={`rounded-xl border p-5 ${riskLevelStyles(structuralRiskOverride?.triggered ? structuralRiskOverride?.level : "low")}`}>
+              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">Structural Risk</p>
+              <p className="text-lg font-bold">
+                {structuralRiskOverride?.triggered ? "Override triggered" : "Weighted only"}
+              </p>
+              <p className="text-sm mt-1">
+                {structuralRiskOverride?.rationale || "No structural override was required."}
+              </p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Support Detail</p>
-              <p className="text-3xl font-bold text-gray-900">{terms.length}</p>
-              <p className="text-sm text-gray-600 mt-1">Clause findings remain available below</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Benchmark Observations</p>
+              <p className="text-3xl font-bold text-gray-900">{benchmarkObservations.length || topRisks.length || complianceCount!.critical}</p>
+              <p className="text-sm text-gray-600 mt-1">Observations tie contract language to a benchmark and recommendation.</p>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-            <div className="xl:col-span-2 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Top 3 Risks</h3>
-                {weightedAssessment?.methodology && (
-                  <span className="text-xs text-gray-500">{weightedAssessment.methodology}</span>
-                )}
-              </div>
-              <div className="divide-y divide-gray-100">
-                {topRisks.length > 0 ? topRisks.map((risk, i) => (
-                  <div key={`${risk.title}-${i}`} className="px-6 py-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold uppercase tracking-wider text-primary-600">Tier {risk.tier}</span>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(risk.severity)}`}>
-                            {risk.severity.toUpperCase()}
-                          </span>
-                        </div>
-                        <p className="text-base font-semibold text-gray-900 mt-2">{risk.title}</p>
-                        <p className="text-sm text-gray-600 mt-1">{risk.why_it_matters}</p>
-                        <p className="text-sm text-primary-600 font-medium mt-2">{risk.recommendation}</p>
-                      </div>
-                    </div>
-                  </div>
-                )) : (
-                  <div className="px-6 py-5 text-sm text-gray-500">Top risks will appear here after contract analysis.</div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Immediate Actions</h3>
-                <div className="space-y-3">
-                  {(immediateActions.length > 0 ? immediateActions : [
-                    "Renegotiate rebate definitions before relying on stated passthrough.",
-                    "Require pricing transparency or pass-through claims economics.",
-                    "Expand audit and specialty control terms before renewal."
-                  ]).map((action, i) => (
-                    <div key={`${action}-${i}`} className="flex gap-3">
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-50 text-primary-700 text-xs font-bold flex-shrink-0">{i + 1}</span>
-                      <p className="text-sm text-gray-700">{action}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Weighted Tier Scores</h3>
-                <div className="space-y-3">
-                  {(weightedAssessment?.tier_scores || []).map((tier) => (
-                    <div key={tier.tier}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="font-medium text-gray-800">{tier.tier}</span>
-                        <span className="text-gray-500">{tier.score}% risk</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                        <div className={`h-full ${
-                          tier.score >= 65 ? "bg-red-500" : tier.score >= 35 ? "bg-amber-500" : "bg-emerald-500"
-                        }`} style={{ width: `${Math.min(tier.score, 100)}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {financialExposure && (
-            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Financial Exposure</h3>
-                {financialExposure.summary && <p className="text-sm text-gray-500 mt-1">{financialExposure.summary}</p>}
-                {financialExposure.mode === "claims_backed" && financialExposure.claims_context?.claims_count && (
-                  <p className="text-xs text-emerald-700 mt-2">
-                    Based on {financialExposure.claims_context.claims_count.toLocaleString()} uploaded claims
-                    {financialExposure.claims_context.claims_filename ? ` from ${financialExposure.claims_context.claims_filename}` : ""}
-                    {financialExposure.claims_context.date_range_start && financialExposure.claims_context.date_range_end ? ` (${financialExposure.claims_context.date_range_start} to ${financialExposure.claims_context.date_range_end})` : ""}.
-                  </p>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
-                {[
-                  { label: "Rebate Leakage", item: financialExposure.rebate_leakage },
-                  { label: "Spread Exposure", item: financialExposure.spread_exposure },
-                  { label: "Specialty Control", item: financialExposure.specialty_control },
-                ].map(({ label, item }) => item ? (
-                  <div key={label} className="p-5">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-semibold text-gray-900">{label}</p>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(item.level)}`}>
-                        {item.level.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-lg font-bold text-gray-900">{item.estimate}</p>
-                    <p className="text-sm text-gray-600 mt-2">{item.driver}</p>
-                  </div>
-                ) : null)}
-              </div>
-            </div>
-          )}
 
           {controlMap.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
@@ -893,28 +824,180 @@ export default function ContractsPage() {
             </div>
           )}
 
-          {(auditImplication || linkedFindings.length > 0) && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
-              {auditImplication && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-5">
-                  <h3 className="text-sm font-bold text-red-800 uppercase tracking-wider mb-2">Audit Implication</h3>
-                  <p className="text-sm text-red-700">{auditImplication}</p>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+            <div className="xl:col-span-2 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Observations & Recommendations</h3>
+                  <p className="text-sm text-gray-500 mt-1">Client-style considerations tied to a benchmark, with the recommendation embedded directly in the observation.</p>
                 </div>
-              )}
-              {linkedFindings.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
-                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Economic Linkages</h3>
-                  <div className="space-y-3">
-                    {linkedFindings.map((finding, i) => (
-                      <div key={`${finding.title}-${i}`} className="rounded-lg bg-gray-50 border border-gray-100 p-4">
-                        <p className="text-sm font-medium text-gray-900">{finding.title}</p>
-                        {finding.explanation && <p className="text-sm text-gray-600 mt-1">{finding.explanation}</p>}
-                        {finding.economic_impact && <p className="text-sm text-primary-600 mt-2">{finding.economic_impact}</p>}
+                {weightedAssessment?.methodology && (
+                  <span className="text-xs text-gray-500 text-right max-w-xs">{weightedAssessment.methodology}</span>
+                )}
+              </div>
+              <div className="divide-y divide-gray-100">
+                {benchmarkObservations.length > 0 ? benchmarkObservations.map((item, i) => (
+                  <div key={`${item.title}-${i}`} className="px-6 py-5">
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${observationKindStyles(item.kind)}`}>
+                        {item.kind === "strength" ? "STRENGTH" : "CONSIDERATION"}
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(item.severity)}`}>
+                        {item.severity.toUpperCase()}
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-primary-600">Tier {item.tier}</span>
+                      <span className="text-xs text-gray-500">{item.category}</span>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900">{item.title}</p>
+                    <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Benchmark</p>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{item.benchmark_label}</p>
+                      <p className="text-sm text-gray-600 mt-1">{item.benchmark}</p>
+                      <p className="text-xs text-gray-500 mt-2">Source: {item.benchmark_source}</p>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Observation</p>
+                        <p className="text-sm text-gray-700 mt-1">{item.observation}</p>
                       </div>
-                    ))}
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Implication</p>
+                        <p className="text-sm text-gray-700 mt-1">{item.implication}</p>
+                      </div>
+                    </div>
+                    {item.supporting_detail && (
+                      <p className="text-sm text-gray-600 mt-3">{item.supporting_detail}</p>
+                    )}
+                    <div className="mt-4 rounded-lg bg-primary-50 border border-primary-100 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-primary-700">Recommendation</p>
+                      <p className="text-sm text-primary-700 font-medium mt-1">{item.recommendation}</p>
+                    </div>
                   </div>
+                )) : topRisks.length > 0 ? topRisks.map((risk, i) => (
+                  <div key={`${risk.title}-${i}`} className="px-6 py-5">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${observationKindStyles("consideration")}`}>
+                        CONSIDERATION
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(risk.severity)}`}>
+                        {risk.severity.toUpperCase()}
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-primary-600">Tier {risk.tier}</span>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 mt-2">{risk.title}</p>
+                    <p className="text-sm text-gray-600 mt-1">{risk.why_it_matters}</p>
+                    <div className="mt-4 rounded-lg bg-primary-50 border border-primary-100 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-primary-700">Recommendation</p>
+                      <p className="text-sm text-primary-700 font-medium mt-1">{risk.recommendation}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="px-6 py-5 text-sm text-gray-500">Observations will appear here after contract analysis.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Risk Framing</h3>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Structural View</p>
+                    <p className="text-sm text-gray-700 mt-1">{structuralRiskOverride?.rationale || "Weighted scoring is active without a structural override."}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Control View</p>
+                    <p className="text-sm text-gray-700 mt-1">{controlPosture?.headline || "Control posture will appear after contract analysis."}</p>
+                  </div>
+                  {auditImplication && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Audit Interpretation</p>
+                      <p className="text-sm text-gray-700 mt-1">{auditImplication}</p>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Weighted Tier Scores</h3>
+                <div className="space-y-3">
+                  {(weightedAssessment?.tier_scores || []).map((tier) => (
+                    <div key={tier.tier}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="font-medium text-gray-800">{tier.tier}</span>
+                        <span className="text-gray-500">{tier.score}% risk</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div className={`h-full ${
+                          tier.score >= 65 ? "bg-red-500" : tier.score >= 35 ? "bg-amber-500" : "bg-emerald-500"
+                        }`} style={{ width: `${Math.min(tier.score, 100)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {(immediateActions.length > 0) && (
+                  <div className="mt-5 pt-4 border-t border-gray-100">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Negotiation Sequence</p>
+                    <div className="space-y-2">
+                      {immediateActions.map((action, i) => (
+                        <div key={`${action}-${i}`} className="flex gap-3">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary-50 text-primary-700 text-[11px] font-bold flex-shrink-0">{i + 1}</span>
+                          <p className="text-sm text-gray-700">{action}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {financialExposure && (
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Supporting Leakage Estimates</h3>
+                {financialExposure.summary && <p className="text-sm text-gray-500 mt-1">{financialExposure.summary}</p>}
+                {financialExposure.mode === "claims_backed" && financialExposure.claims_context?.claims_count && (
+                  <p className="text-xs text-emerald-700 mt-2">
+                    Based on {financialExposure.claims_context.claims_count.toLocaleString()} uploaded claims
+                    {financialExposure.claims_context.claims_filename ? ` from ${financialExposure.claims_context.claims_filename}` : ""}
+                    {financialExposure.claims_context.date_range_start && financialExposure.claims_context.date_range_end ? ` (${financialExposure.claims_context.date_range_start} to ${financialExposure.claims_context.date_range_end})` : ""}.
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+                {[
+                  { label: "Rebate Leakage", item: financialExposure.rebate_leakage },
+                  { label: "Spread Exposure", item: financialExposure.spread_exposure },
+                  { label: "Specialty Control", item: financialExposure.specialty_control },
+                ].map(({ label, item }) => item ? (
+                  <div key={label} className="p-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-gray-900">{label}</p>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(item.level)}`}>
+                        {item.level.toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">{item.estimate}</p>
+                    <p className="text-sm text-gray-600 mt-2">{item.driver}</p>
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+          )}
+
+          {linkedFindings.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5 mb-6">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Economic Linkages</h3>
+              <div className="space-y-3">
+                {linkedFindings.map((finding, i) => (
+                  <div key={`${finding.title}-${i}`} className="rounded-lg bg-gray-50 border border-gray-100 p-4">
+                    <p className="text-sm font-medium text-gray-900">{finding.title}</p>
+                    {finding.explanation && <p className="text-sm text-gray-600 mt-1">{finding.explanation}</p>}
+                    {finding.economic_impact && <p className="text-sm text-primary-600 mt-2">{finding.economic_impact}</p>}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

@@ -127,6 +127,7 @@ async def dashboard_stats():
     """Aggregate stats for the dashboard."""
     from services.db_service import _get_conn, load_latest_contract_analysis
     from services.data_service import get_claims_status
+    from services.ai_service import enrich_contract_analysis
 
     contracts_count = 0
     latest_analysis = None
@@ -152,10 +153,15 @@ async def dashboard_stats():
         claims_status = {"custom_data_loaded": False, "claims_count": 0}
 
     latest = (latest_analysis or {}).get("analysis", {}) if latest_analysis else {}
+    if isinstance(latest, dict) and latest:
+        latest = enrich_contract_analysis(dict(latest))
     weighted = latest.get("weighted_assessment", {}) if isinstance(latest, dict) else {}
     exposure = latest.get("financial_exposure", {}) if isinstance(latest, dict) else {}
     top_risks = latest.get("top_risks", []) if isinstance(latest, dict) else []
     immediate_actions = latest.get("immediate_actions", []) if isinstance(latest, dict) else []
+    control_posture = latest.get("control_posture", {}) if isinstance(latest, dict) else {}
+    structural_override = latest.get("structural_risk_override", {}) if isinstance(latest, dict) else {}
+    benchmark_observations = latest.get("benchmark_observations", []) if isinstance(latest, dict) else []
 
     return {
         "claims_loaded": bool(claims_status.get("custom_data_loaded")),
@@ -173,6 +179,12 @@ async def dashboard_stats():
             "financial_exposure_summary": exposure.get("summary") if isinstance(exposure, dict) else None,
             "financial_exposure_mode": exposure.get("mode") if isinstance(exposure, dict) else None,
             "spread_exposure_estimate": exposure.get("spread_exposure", {}).get("estimate") if isinstance(exposure, dict) and isinstance(exposure.get("spread_exposure"), dict) else None,
+            "control_posture_label": control_posture.get("label") if isinstance(control_posture, dict) else None,
+            "control_posture_summary": control_posture.get("summary") if isinstance(control_posture, dict) else None,
+            "structural_risk_headline": structural_override.get("headline") if isinstance(structural_override, dict) else None,
+            "structural_risk_level": structural_override.get("level") if isinstance(structural_override, dict) else None,
+            "structural_risk_triggered": structural_override.get("triggered") if isinstance(structural_override, dict) else None,
+            "benchmark_observations": benchmark_observations[:4] if isinstance(benchmark_observations, list) else [],
             "top_risks": top_risks[:3] if isinstance(top_risks, list) else [],
             "immediate_actions": immediate_actions[:3] if isinstance(immediate_actions, list) else [],
         },

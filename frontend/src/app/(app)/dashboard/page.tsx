@@ -35,6 +35,12 @@ interface DashboardStats {
     financial_exposure_summary?: string | null;
     financial_exposure_mode?: string | null;
     spread_exposure_estimate?: string | null;
+    control_posture_label?: string | null;
+    control_posture_summary?: string | null;
+    structural_risk_headline?: string | null;
+    structural_risk_level?: string | null;
+    structural_risk_triggered?: boolean | null;
+    benchmark_observations?: { title?: string; kind?: string; recommendation?: string }[];
     top_risks?: { title?: string; severity?: string; tier?: number }[];
     immediate_actions?: string[];
   };
@@ -203,18 +209,18 @@ export default function Dashboard() {
             />
             <MetricCard
               icon={ScrollText}
-              label="Estimated Financial Exposure"
-              value={hasContracts ? (latest?.spread_exposure_estimate || "Directional") : "—"}
-              trend={hasContracts ? (latest?.financial_exposure_mode === "claims_backed" ? "Claims-backed" : "Directional") : "Awaiting deal data"}
+              label="Control Posture"
+              value={hasContracts ? (latest?.control_posture_label || "Pending") : "—"}
+              trend={hasContracts ? (latest?.structural_risk_headline || "Awaiting analysis") : "Awaiting deal data"}
               trendUp={false}
               color="green"
             />
             <MetricCard
               icon={FileText}
-              label="Deals Reviewed"
-              value={String(stats?.contracts_parsed || 0)}
-              trend="Contracts analyzed"
-              trendUp={true}
+              label="Benchmark Observations"
+              value={hasContracts ? String(latest?.benchmark_observations?.length || latest?.top_risks?.length || 0) : "0"}
+              trend={hasContracts ? "Tied to public benchmarks" : "No contract yet"}
+              trendUp={hasContracts}
               color="blue"
             />
             <MetricCard
@@ -233,8 +239,8 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
                   { title: "Deal Diagnosis", body: latest?.deal_diagnosis || "Run a contract analysis to generate a one-line diagnosis of the PBM structure." },
-                  { title: "Exposure", body: latest?.financial_exposure_summary || "Financial exposure will summarize rebate leakage, spread pricing, and specialty control once a contract is analyzed." },
-                  { title: "Priority", body: latest?.top_risks?.[0]?.title ? `Top live risk: ${latest.top_risks[0].title}.` : "Lead every review with rebate structure, spread, specialty control, and audit scope before administrative terms." },
+                  { title: "Control Posture", body: latest?.control_posture_summary || "Control posture will show whether the PBM or employer controls pricing, rebates, specialty, and audit rights." },
+                  { title: "Supporting Leakage", body: latest?.financial_exposure_summary || "Leakage estimates remain supporting context under the control-based framing." },
                 ].map((item) => (
                   <div key={item.title} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                     <p className="text-sm font-semibold text-gray-900">{item.title}</p>
@@ -245,7 +251,7 @@ export default function Dashboard() {
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
-              <h2 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Immediate Actions</h2>
+              <h2 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Lead Recommendations</h2>
               <div className="space-y-3">
                 {(latest?.immediate_actions && latest.immediate_actions.length > 0 ? latest.immediate_actions : [
                   "Review rebate definitions before relying on passthrough guarantees.",
