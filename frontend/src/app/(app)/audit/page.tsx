@@ -112,13 +112,31 @@ export default function AuditPage() {
       const res = await fetch("/api/audit/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, audit_type: auditType }),
+        body: JSON.stringify({
+          employer_name: form.employerName,
+          pbm_name: form.pbmName,
+          contract_date: form.contractDate,
+          concerns: form.concerns,
+          audit_type: auditType,
+        }),
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setLetter(data.letter || demoLetter);
+      const resolvedLetter =
+        typeof data.letter === "string"
+          ? data.letter
+          : typeof data.letter?.letter_text === "string"
+            ? data.letter.letter_text
+            : typeof data.letter_payload?.letter_text === "string"
+              ? data.letter_payload.letter_text
+              : demoLetter;
+      setLetter(resolvedLetter);
       if (data.audit_type_info) {
-        setAuditTypeInfo(data.audit_type_info);
+        setAuditTypeInfo({
+          audit_type: data.audit_type_info.audit_type || auditType,
+          description: data.audit_type_info.description || "",
+          checklist: data.audit_type_info.checklist || data.audit_type_info.checks || [],
+        });
       }
     } catch {
       setLetter(demoLetter);

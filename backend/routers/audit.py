@@ -77,10 +77,17 @@ async def generate_audit(request: AuditRequest = None):
         findings = audit_report(claims)
 
     result = await generate_audit_letter(contract_data, findings)
+    audit_type_info = AUDIT_TYPE_INFO[audit_type]
 
     return {
         "status": "success",
         "audit_type": audit_type,
-        "audit_type_info": AUDIT_TYPE_INFO[audit_type],
-        "letter": result,
+        "audit_type_info": {
+            "audit_type": audit_type,
+            "description": audit_type_info["description"],
+            "checklist": audit_type_info["checks"],
+            "checks": audit_type_info["checks"],
+        },
+        "letter": result.get("letter_text", "") if isinstance(result, dict) else str(result),
+        "letter_payload": result,
     }
