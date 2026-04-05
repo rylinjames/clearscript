@@ -24,23 +24,23 @@ from routers import (
     compliance,
     audit,
     claims_upload,
+    benchmarks,
+    cms_benchmark,
+    drug_lookup,
+    formulary,
+    exclusion_list,
+    batch_formulary,
+    reports,
+    audit_timeline,
+    spread,
+    rebates,
+    ndc_analysis,
+    network,
+    prior_auth,
+    provider_anomaly,
+    copay_accumulator,
+    cms_data,
 )
-
-# ─── Future Products (commented out) ──────────────────────────────────────
-# Product 2: Benchmarking Reports
-# from routers import benchmarks, cms_benchmark, drug_lookup
-
-# Product 3: Formulary Intelligence
-# from routers import formulary, exclusion_list, batch_formulary
-
-# Product 4: Audit Package
-# from routers import reports, audit_timeline
-
-# Product 5: Analytics Suite
-# from routers import spread, rebates, ndc_analysis, network, prior_auth, provider_anomaly, copay_accumulator, claims_upload
-
-# Shared
-# from routers import cms_data
 
 app = FastAPI(
     title="ClearScript — Plan Intelligence",
@@ -77,25 +77,22 @@ app.include_router(spc.router)
 app.include_router(compliance.router)
 app.include_router(audit.router)
 app.include_router(claims_upload.router)
-
-# ─── Future Products (commented out) ──────────────────────────────────────
-# app.include_router(benchmarks.router)
-# app.include_router(cms_benchmark.router)
-# app.include_router(drug_lookup.router)
-# app.include_router(formulary.router)
-# app.include_router(exclusion_list.router)
-# app.include_router(batch_formulary.router)
-# app.include_router(reports.router)
-# app.include_router(audit_timeline.router)
-# app.include_router(spread.router)
-# app.include_router(rebates.router)
-# app.include_router(ndc_analysis.router)
-# app.include_router(network.router)
-# app.include_router(prior_auth.router)
-# app.include_router(provider_anomaly.router)
-# app.include_router(copay_accumulator.router)
-# app.include_router(claims_upload.router)
-# app.include_router(cms_data.router)
+app.include_router(benchmarks.router)
+app.include_router(cms_benchmark.router)
+app.include_router(drug_lookup.router)
+app.include_router(formulary.router)
+app.include_router(exclusion_list.router)
+app.include_router(batch_formulary.router)
+app.include_router(reports.router)
+app.include_router(audit_timeline.router)
+app.include_router(spread.router)
+app.include_router(rebates.router)
+app.include_router(ndc_analysis.router)
+app.include_router(network.router)
+app.include_router(prior_auth.router)
+app.include_router(provider_anomaly.router)
+app.include_router(copay_accumulator.router)
+app.include_router(cms_data.router)
 
 
 @app.get("/")
@@ -103,7 +100,7 @@ async def root():
     return {
         "name": "ClearScript — Plan Intelligence",
         "version": "1.0.0",
-        "product": "Contract Reader",
+        "product": "Plan Intelligence Platform",
         "features": [
             {"id": 1, "name": "Contract Intake & Parsing",        "endpoint": "POST /api/contracts/upload"},
             {"id": 2, "name": "Plan Document Parser (SBC/SPD/EOC)","endpoint": "POST /api/contracts/upload-plan-document"},
@@ -112,6 +109,22 @@ async def root():
             {"id": 5, "name": "Audit Request Generator",           "endpoint": "POST /api/audit/generate"},
             {"id": 6, "name": "Compliance Deadline Tracker",       "endpoint": "GET /api/compliance/deadlines"},
             {"id": 7, "name": "SPC Parser",                        "endpoint": "POST /api/spc/parse"},
+            {"id": 8, "name": "Claims Upload",                     "endpoint": "POST /api/claims/upload"},
+            {"id": 9, "name": "Benchmarking Dashboard",            "endpoint": "GET /api/benchmarks/data"},
+            {"id": 10, "name": "CMS Benchmark Data",               "endpoint": "GET /api/cms-benchmark/partd-stats"},
+            {"id": 11, "name": "Drug Lookup",                      "endpoint": "GET /api/drug-lookup/search"},
+            {"id": 12, "name": "Formulary Analysis",               "endpoint": "GET /api/formulary/analysis"},
+            {"id": 13, "name": "Exclusion List Analyzer",          "endpoint": "POST /api/exclusion-list/parse"},
+            {"id": 14, "name": "Batch Formulary Processor",        "endpoint": "POST /api/batch-formulary/process"},
+            {"id": 15, "name": "Report Auditor",                   "endpoint": "GET /api/reports/audit"},
+            {"id": 16, "name": "Audit Timeline Planner",           "endpoint": "GET /api/audit-timeline/template"},
+            {"id": 17, "name": "Spread Pricing Detector",          "endpoint": "GET /api/spread/analysis"},
+            {"id": 18, "name": "Rebate Tracker",                   "endpoint": "GET /api/rebates/analysis"},
+            {"id": 19, "name": "NDC vs J-Code Analysis",           "endpoint": "GET /api/ndc-analysis/analysis"},
+            {"id": 20, "name": "Network Adequacy Analyzer",        "endpoint": "POST /api/network/analyze"},
+            {"id": 21, "name": "Prior Authorization Analyzer",     "endpoint": "GET /api/prior-auth/analysis"},
+            {"id": 22, "name": "Provider Anomaly Detection",       "endpoint": "GET /api/provider-anomalies/analysis"},
+            {"id": 23, "name": "Copay Accumulator Analyzer",       "endpoint": "GET /api/copay-accumulator/analysis"},
         ],
         "docs": "/docs",
     }
@@ -167,8 +180,8 @@ async def dashboard_stats():
         "claims_loaded": bool(claims_status.get("custom_data_loaded")),
         "claims_count": int(claims_status.get("claims_count", 0) or 0),
         "contracts_parsed": contracts_count,
-        "modules_active": 7,
-        "data_source": "contract_reader",
+        "modules_active": 23,
+        "data_source": "plan_intelligence",
         "latest_analysis": {
             "filename": latest_analysis.get("filename") if latest_analysis else None,
             "analysis_date": latest_analysis.get("analysis_date") if latest_analysis else None,

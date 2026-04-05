@@ -196,10 +196,10 @@ export default function ClaimsPage() {
             <Database className="w-5 h-5 text-blue-600 flex-shrink-0" />
             <div>
               <p className="text-sm font-medium text-blue-800">
-                Using Sample Data — {status?.claims_count?.toLocaleString() || "500"} synthetic claims
+                Demo data based on publicly available sources — {status?.claims_count?.toLocaleString() || "500"} claims
               </p>
               <p className="text-xs text-blue-600 mt-0.5">
-                Upload your own claims CSV to replace the sample data
+                Upload your own claims CSV to replace the demo dataset
               </p>
             </div>
           </>
@@ -286,7 +286,7 @@ export default function ClaimsPage() {
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4" />
-                  Reset to Sample Data
+                  Reset to Demo Data
                 </>
               )}
             </button>
@@ -397,14 +397,15 @@ export default function ClaimsPage() {
         <p className="text-sm text-amber-800">
           <span className="font-semibold">Note:</span> Once uploaded, all analysis pages (Report Auditor,
           Rebate Tracker, Spread Pricing, Formulary Detector, Benchmarks) will use your data instead of
-          the built-in sample data. Use the &quot;Reset to Sample Data&quot; button to switch back at any time.
+          the built-in demo dataset sourced from publicly available materials. Use the &quot;Reset to Demo Data&quot;
+          button to switch back at any time.
         </p>
       </div>
 
       <ConfirmDialog
         open={showResetConfirm}
         title="Reset Claims Data"
-        message="This will remove your uploaded claims and revert all analysis modules to sample data. This action cannot be undone."
+        message="This will remove your uploaded claims and revert all analysis modules to the demo dataset sourced from publicly available materials. This action cannot be undone."
         confirmLabel="Reset Data"
         variant="danger"
         onConfirm={() => {
