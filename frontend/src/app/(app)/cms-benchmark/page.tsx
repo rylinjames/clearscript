@@ -42,6 +42,107 @@ interface CompareResult {
   status: string;
 }
 
+function normalizePartDStats(payload: unknown): PartDStats | null {
+  const source = payload && typeof payload === "object" && "partd_benchmarks" in payload
+    ? (payload as { partd_benchmarks?: Record<string, unknown> }).partd_benchmarks
+    : payload;
+
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const stats = source as Record<string, unknown>;
+  const tierDistributionRaw = stats.tier_distribution_pct as Record<string, unknown> | undefined;
+  const utilizationRaw = stats.utilization_management_rates as Record<string, unknown> | undefined;
+
+  return {
+    planCount: Number(stats.total_plans || 0),
+    avgFormularySize: Number(stats.average_formulary_size_ndcs || 0),
+    tierDistribution: tierDistributionRaw
+      ? Object.entries(tierDistributionRaw).map(([tier, percentage]) => ({
+          tier: tier.replace(/_/g, " "),
+          percentage: Number(percentage || 0),
+        }))
+      : [],
+    paRate: Number((utilizationRaw?.prior_authorization as { mean_pct?: number } | undefined)?.mean_pct || 0),
+    qlRate: Number((utilizationRaw?.quantity_limit as { mean_pct?: number } | undefined)?.mean_pct || 0),
+    stRate: Number((utilizationRaw?.step_therapy as { mean_pct?: number } | undefined)?.mean_pct || 0),
+  };
+}
+
+function normalizeIRADrugs(payload: unknown): IRADrug[] {
+  const source = payload && typeof payload === "object" && "ira_selected_drugs" in payload
+    ? (payload as { ira_selected_drugs?: unknown[] }).ira_selected_drugs
+    : payload;
+
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source.map((item) => {
+    const drug = item as Record<string, unknown>;
+    return {
+      drugName: String(drug.drug_name || ""),
+      manufacturer: String(drug.manufacturer || ""),
+      condition: String(drug.condition || ""),
+      listPrice: Number(drug.current_list_price_30day || 0),
+      negotiatedPrice: Number(drug.negotiated_max_fair_price_30day || 0),
+      savingsPercent: Math.round(Number(drug.savings_pct || 0) * 100),
+    };
+  });
+}
+
+function normalizeCompareResults(payload: unknown): CompareResult[] {
+  const source = payload && typeof payload === "object" && "comparison" in payload
+    ? (payload as { comparison?: Record<string, unknown> }).comparison
+    : payload;
+
+  if (!source || typeof source !== "object") {
+    return [];
+  }
+
+  const comparison = source as Record<string, unknown>;
+  const tierDistribution = comparison.tier_distribution as Record<string, unknown> | undefined;
+  const utilization = comparison.utilization_management as Record<string, unknown> | undefined;
+  const employerTier = (tierDistribution?.employer || {}) as Record<string, unknown>;
+  const benchmarkTier = (tierDistribution?.partd_average || {}) as Record<string, unknown>;
+  const employerUM = (utilization?.employer || {}) as Record<string, unknown>;
+  const benchmarkUM = (utilization?.partd_average || {}) as Record<string, unknown>;
+
+  return [
+    {
+      metric: "Formulary size",
+      yourPlan: String(comparison.formulary_size || 0),
+      partDBenchmark: String(comparison.partd_avg_formulary_size || 0),
+      status: Number(comparison.formulary_size || 0) >= Number(comparison.partd_avg_formulary_size || 0) ? "good" : "warning",
+    },
+    {
+      metric: "Coverage gaps",
+      yourPlan: String(comparison.coverage_gaps_count || 0),
+      partDBenchmark: "0",
+      status: Number(comparison.coverage_gaps_count || 0) === 0 ? "good" : "warning",
+    },
+    {
+      metric: "Tier mismatches",
+      yourPlan: String(comparison.tier_mismatches_count || 0),
+      partDBenchmark: "0",
+      status: Number(comparison.tier_mismatches_count || 0) === 0 ? "good" : "warning",
+    },
+    {
+      metric: "PA rate",
+      yourPlan: `${Number(employerUM.pa_pct || 0)}%`,
+      partDBenchmark: `${Number(((benchmarkUM.prior_authorization || {}) as { mean_pct?: number }).mean_pct || 0)}%`,
+      status: Number(employerUM.pa_pct || 0) <= Number(((benchmarkUM.prior_authorization || {}) as { mean_pct?: number }).mean_pct || 0) ? "good" : "warning",
+    },
+    {
+      metric: "Tier 5 specialty share",
+      yourPlan: `${Number(employerTier.tier_5_specialty_pct || 0)}%`,
+      partDBenchmark: `${Number(benchmarkTier.tier_5_specialty_pct || 0)}%`,
+      status: "info",
+    },
+  ];
+}
+
 export default function CMSBenchmarkPage() {
   const { toast } = useToast();
   usePageTitle("CMS Benchmark");
@@ -57,8 +158,8 @@ export default function CMSBenchmarkPage() {
         fetch("/api/cms-benchmark/partd-stats"),
         fetch("/api/cms-benchmark/ira-drugs"),
       ]);
-      if (statsRes.ok) setPartD(await statsRes.json());
-      if (iraRes.ok) setIraDrugs(await iraRes.json());
+      if (statsRes.ok) setPartD(normalizePartDStats(await statsRes.json()));
+      if (iraRes.ok) setIraDrugs(normalizeIRADrugs(await iraRes.json()));
     } catch {
       /* silent */
     }
@@ -77,7 +178,7 @@ export default function CMSBenchmarkPage() {
       try {
         const res = await fetch("/api/cms-benchmark/compare", { method: "POST", body: formData });
         if (res.ok) {
-          setCompareResults(await res.json());
+          setCompareResults(normalizeCompareResults(await res.json()));
           toast("Formulary compared against Part D benchmarks", "success");
         } else {
           toast("Comparison failed", "error");

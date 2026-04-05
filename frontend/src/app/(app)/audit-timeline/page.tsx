@@ -36,6 +36,51 @@ interface FormValues {
   noticePeriod: string;
 }
 
+function normalizeTimelinePayload(payload: unknown): TemplateData | null {
+  const source = payload && typeof payload === "object" && "timeline" in payload
+    ? (payload as { timeline?: Record<string, unknown> }).timeline
+    : payload;
+
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const timeline = source as Record<string, unknown>;
+  const milestones = Array.isArray(timeline.milestones)
+    ? timeline.milestones.map((item) => {
+        const milestone = item as Record<string, unknown>;
+        const riskLevel = milestone.risk_level;
+        return {
+          name: String(milestone.name || ""),
+          date: String(milestone.date || ""),
+          description: String(milestone.description || ""),
+          delayTactics: Array.isArray(milestone.delay_tactics)
+            ? milestone.delay_tactics.map((tactic) => String(tactic))
+            : [],
+          riskLevel: (riskLevel === "critical" || riskLevel === "warning" || riskLevel === "good"
+            ? riskLevel
+            : "info") as TimelineMilestone["riskLevel"],
+        };
+      })
+    : [];
+  const riskFactors = Array.isArray(timeline.risk_factors)
+    ? timeline.risk_factors.map((item) => {
+        const factor = item as Record<string, unknown>;
+        return {
+          label: String(factor.label || ""),
+          status: String(factor.status || "info"),
+        };
+      })
+    : [];
+
+  return {
+    milestones,
+    riskFactors,
+    totalDurationDays: Number(timeline.total_duration_days || 0),
+    criticalDeadlines: milestones.filter((milestone) => milestone.riskLevel === "critical").length,
+  };
+}
+
 export default function AuditTimelinePage() {
   const { toast } = useToast();
   usePageTitle("Audit Timeline");
@@ -51,7 +96,9 @@ export default function AuditTimelinePage() {
   const fetchTemplate = useCallback(async () => {
     try {
       const res = await fetch("/api/audit-timeline/template");
-      if (res.ok) setData(await res.json());
+      if (res.ok) {
+        setData(normalizeTimelinePayload(await res.json()));
+      }
     } catch {
       /* silent */
     }
@@ -65,13 +112,27 @@ export default function AuditTimelinePage() {
   const handleGenerate = async () => {
     setGenerating(true);
     try {
+      const planYearEnd = form.planYearEndDate || "2025-12-31";
+      const responseDeadlineDays = form.pbmResponseDeadline && form.planYearEndDate
+        ? Math.max(
+            1,
+            Math.round(
+              (new Date(form.pbmResponseDeadline).getTime() - new Date(form.planYearEndDate).getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          )
+        : 30;
       const res = await fetch("/api/audit-timeline/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          plan_year_end: planYearEnd,
+          notice_requirement_days: Number(form.noticePeriod) || 90,
+          response_deadline_days: responseDeadlineDays,
+        }),
       });
       if (res.ok) {
-        setData(await res.json());
+        setData(normalizeTimelinePayload(await res.json()));
         toast("Custom timeline generated", "success");
       } else {
         toast("Failed to generate timeline", "error");

@@ -42,6 +42,46 @@ interface Recommendation {
   status: string;
 }
 
+function normalizeAccumulatorAnalysis(payload: unknown): AnalysisSummary | null {
+  const source = payload && typeof payload === "object" && "accumulator_impact" in payload
+    ? (payload as { accumulator_impact?: Record<string, unknown> }).accumulator_impact
+    : payload;
+
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const analysis = source as Record<string, unknown>;
+  return {
+    affectedMembers: Number(analysis.affected_members || 0),
+    totalCapturedValue: Number(analysis.total_captured_value || 0),
+    perMemberImpact: Number(analysis.per_affected_member_impact || 0),
+    avgDeductibleGap: Number(analysis.deductible_assumed || 0),
+    pctMembersHitOOP: Number(analysis.affected_pct || 0),
+  };
+}
+
+function normalizeDrugList(payload: unknown): DrugImpact[] {
+  const source = payload && typeof payload === "object" && "drugs" in payload
+    ? (payload as { drugs?: unknown[] }).drugs
+    : payload;
+
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source.map((item) => {
+    const drug = item as Record<string, unknown>;
+    return {
+      drugName: String(drug.drug_name || ""),
+      drugClass: String(drug.therapeutic_class || ""),
+      annualCopayCardValue: Number(drug.annual_copay_card_value || 0),
+      annualDrugCost: Number(drug.annual_drug_cost || 0),
+      copayAsPctOfCost: Number(drug.copay_card_as_pct_of_cost || 0),
+    };
+  });
+}
+
 export default function CopayAccumulatorPage() {
   const { toast } = useToast();
   usePageTitle("Copay Accumulator");
@@ -82,8 +122,8 @@ export default function CopayAccumulatorPage() {
         fetch("/api/copay-accumulator/analysis"),
         fetch("/api/copay-accumulator/drug-list"),
       ]);
-      if (analysisRes.ok) setAnalysis(await analysisRes.json());
-      if (drugsRes.ok) setDrugs(await drugsRes.json());
+      if (analysisRes.ok) setAnalysis(normalizeAccumulatorAnalysis(await analysisRes.json()));
+      if (drugsRes.ok) setDrugs(normalizeDrugList(await drugsRes.json()));
     } catch {
       /* silent */
     }
