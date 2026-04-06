@@ -121,7 +121,7 @@ async def parse_spc(text: str) -> dict:
     result = await _generate(
         SPC_PARSE_SYSTEM_PROMPT,
         f"Extract structured benefit data from this Summary of Plan Coverage:\n\n{text[:15000]}",
-        4000,
+        16000,
     )
     parsed = json.loads(result)
     parsed["_generated_by"] = "ai"
@@ -138,7 +138,7 @@ async def compare_spcs(text_a: str, text_b: str) -> dict:
         f"=== PLAN A ===\n{text_a[:8000]}\n\n"
         f"=== PLAN B ===\n{text_b[:8000]}"
     )
-    result = await _generate(SPC_COMPARE_SYSTEM_PROMPT, prompt, 4000)
+    result = await _generate(SPC_COMPARE_SYSTEM_PROMPT, prompt, 16000)
     parsed = json.loads(result)
     parsed["_generated_by"] = "ai"
     logger.info("SPC comparison completed via AI")

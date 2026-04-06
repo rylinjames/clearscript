@@ -942,7 +942,7 @@ async def analyze_contract(text: str) -> dict:
     The caller is responsible for turning the exception into an HTTP error
     the frontend can display.
     """
-    result = await _generate(CONTRACT_SYSTEM_PROMPT, f"Analyze this PBM contract:\n\n{text[:12000]}", 3000)
+    result = await _generate(CONTRACT_SYSTEM_PROMPT, f"Analyze this PBM contract:\n\n{text[:12000]}", 16000)
     parsed = json.loads(result)
     parsed["_generated_by"] = "ai"
     return enrich_contract_analysis(parsed)
@@ -981,7 +981,7 @@ async def analyze_disclosure(text: str) -> dict:
     """
     Score a PBM disclosure against DOL-required items. Raises on failure.
     """
-    result = await _generate(DISCLOSURE_SYSTEM_PROMPT, f"Analyze this PBM disclosure document for DOL compliance:\n\n{text[:12000]}", 4000)
+    result = await _generate(DISCLOSURE_SYSTEM_PROMPT, f"Analyze this PBM disclosure document for DOL compliance:\n\n{text[:12000]}", 16000)
     parsed = json.loads(result)
     parsed["_generated_by"] = "ai"
     return parsed
@@ -1016,7 +1016,7 @@ async def generate_audit_letter(contract_data: dict, findings: dict) -> dict:
         f"Generate an audit request letter based on these findings:\n\n"
         f"Contract Analysis:\n{json.dumps(contract_data, indent=2)[:4000]}\n\n"
         f"Audit Findings:\n{json.dumps(findings, indent=2)[:4000]}",
-        4000,
+        16000,
     )
     return json.loads(result)
 
@@ -1042,6 +1042,6 @@ async def analyze_report(report_text: str, claims_data: dict) -> dict:
         f"Analyze this PBM report against claims data:\n\n"
         f"Report:\n{report_text[:6000]}\n\n"
         f"Claims Summary:\n{json.dumps(claims_data, indent=2)[:4000]}",
-        3000,
+        16000,
     )
     return json.loads(result)

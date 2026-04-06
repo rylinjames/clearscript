@@ -83,7 +83,7 @@ async def cross_reference_contract_and_plan(contract_analysis: dict, plan_benefi
         f"=== PBM CONTRACT ANALYSIS ===\n{json.dumps(contract_analysis, indent=2, default=str)[:8000]}\n\n"
         f"=== PLAN DOCUMENT BENEFITS ===\n{json.dumps(plan_benefits, indent=2, default=str)[:8000]}"
     )
-    result = await _generate(CROSSREF_SYSTEM_PROMPT, prompt, 4000)
+    result = await _generate(CROSSREF_SYSTEM_PROMPT, prompt, 16000)
     parsed = json.loads(result)
     parsed["_generated_by"] = "ai"
     logger.info(f"Cross-reference completed via AI, alignment_score={parsed.get('overall_alignment_score', 'N/A')}")
