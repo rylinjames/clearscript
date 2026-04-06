@@ -68,9 +68,23 @@ async def upload_contract(file: UploadFile = File(...)):
             text = ""
 
     if len(text.strip()) < 50:
-        text = _demo_contract_text()
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Could not extract meaningful text from the uploaded file. "
+                "If this is a scanned PDF, OCR is not yet supported — please "
+                "upload a text-based PDF or a .txt / .docx copy of the contract."
+            ),
+        )
 
-    result = await run_contract_pipeline(text)
+    try:
+        result = await run_contract_pipeline(text)
+    except Exception as e:
+        logger.error(f"Contract analysis pipeline failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI contract analysis is currently unavailable: {e}",
+        )
 
     # Run audit rights benchmark scoring against gold-standard template
     audit_benchmark = score_audit_rights(result)
@@ -87,10 +101,10 @@ async def upload_contract(file: UploadFile = File(...)):
         "filename": file.filename,
         "file_size": len(content),
         "extracted_text_length": len(text),
-        "pdf_parsed": filename.endswith(".pdf") and len(text.strip()) >= 50,
+        "pdf_parsed": filename.endswith(".pdf"),
         "analysis": result,
         "audit_rights_benchmark": audit_benchmark,
-        "generated_by": "ai" if len(text.strip()) >= 50 else "mock",
+        "generated_by": result.get("_generated_by", "ai") if isinstance(result, dict) else "ai",
         "engine": "rocketride_pipeline",
     }
 
@@ -275,49 +289,3 @@ async def pipeline_status():
     """Check if RocketRide pipeline engine is available."""
     return await get_pipeline_status()
 
-
-def _demo_contract_text() -> str:
-    return """
-PHARMACY BENEFIT MANAGEMENT SERVICES AGREEMENT
-
-This Agreement is entered into between Employer Health Plan ("Plan Sponsor") and
-National PBM Services, Inc. ("PBM").
-
-SECTION 3 — PRICING AND REIMBURSEMENT
-3.1 AWP Discount: PBM shall provide a minimum discount of AWP minus 15% for brand
-drugs and AWP minus 75% for generic drugs at retail pharmacies.
-3.2 Mail Order: AWP minus 18% for brand and AWP minus 78% for generic.
-3.3 Spread Pricing: PBM may retain the difference between the amount billed to Plan
-and the amount reimbursed to pharmacies.
-
-SECTION 5 — REBATES
-5.1 Rebate Passthrough: PBM shall pass through 85% of Eligible Rebates to Plan Sponsor.
-5.2 Definition of Eligible Rebates: Eligible Rebates include base manufacturer rebates
-directly attributable to Plan utilization. Administrative fees, manufacturer volume
-bonuses, price protection rebates, and other compensation shall not be considered
-Eligible Rebates.
-
-SECTION 7 — FORMULARY MANAGEMENT
-7.1 PBM shall maintain a formulary of covered drugs. PBM may make mid-year changes
-to the formulary with 60 days written notice to Plan Sponsor.
-7.2 PBM is not required to obtain Plan Sponsor approval for tier placement changes.
-
-SECTION 9 — AUDIT RIGHTS
-9.1 Plan Sponsor may conduct one audit per contract year of claims data.
-9.2 Audit shall be limited to claims processing accuracy and shall not include
-review of rebate contracts, pharmacy reimbursement rates, or PBM internal pricing.
-9.3 Plan Sponsor must provide 90 days advance written notice and select an auditor
-from PBM's approved auditor list.
-
-SECTION 12 — TERM AND TERMINATION
-12.1 Initial term of 3 years with automatic 1-year renewals.
-12.2 Early termination requires 180 days written notice.
-12.3 Early termination is subject to liquidated damages equal to 50% of remaining
-contract value.
-
-SECTION 14 — CONFIDENTIALITY
-14.1 All terms of this Agreement are confidential.
-14.2 Plan Sponsor shall not disclose any pricing, rebate, or reimbursement data
-to any third party, including benefits consultants, brokers, or competing PBMs,
-without PBM's prior written consent.
-"""

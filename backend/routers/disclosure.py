@@ -1,7 +1,10 @@
 """Feature 2: Initial Disclosure Analyzer"""
 
+import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from services.ai_service import analyze_disclosure
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/disclosure", tags=["disclosure"])
 
@@ -23,9 +26,22 @@ async def analyze_disclosure_doc(file: UploadFile = File(...)):
         text = str(content[:10000])
 
     if len(text.strip()) < 50:
-        text = _demo_disclosure_text()
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Could not extract meaningful text from the uploaded disclosure. "
+                "Please upload a text-based file (.txt or text-based PDF)."
+            ),
+        )
 
-    result = await analyze_disclosure(text)
+    try:
+        result = await analyze_disclosure(text)
+    except Exception as e:
+        logger.error(f"Disclosure analysis failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI disclosure analysis is currently unavailable: {e}",
+        )
 
     return {
         "status": "success",
@@ -33,32 +49,3 @@ async def analyze_disclosure_doc(file: UploadFile = File(...)):
         "file_size": len(content),
         "analysis": result,
     }
-
-
-def _demo_disclosure_text() -> str:
-    return """
-PBM ANNUAL DISCLOSURE REPORT — Plan Year 2024-2025
-
-SECTION 1: AGGREGATE REBATE SUMMARY
-Total manufacturer rebates received: $2,145,320
-Rebates passed through to plan: $1,823,522 (85% of eligible)
-
-SECTION 2: UTILIZATION SUMMARY
-Total prescriptions filled: 45,230
-Generic dispensing rate: 79.2%
-Mail order utilization: 18.4%
-
-SECTION 3: TOP 25 DRUGS BY PLAN SPEND
-1. Humira 40mg — $842,000 (312 claims)
-2. Ozempic 1mg — $524,000 (198 claims)
-3. Eliquis 5mg — $389,000 (445 claims)
-[remaining drugs listed...]
-
-SECTION 4: ADMINISTRATIVE FEES
-PBM administrative fee: $3.25 per claim
-Total admin fees: $146,997.50
-
-NOTE: Spread pricing data, pharmacy reimbursement rates, manufacturer rebate
-breakdowns by drug, DIR fee amounts, and pharmacy claw-back data are considered
-proprietary and are not included in this disclosure.
-"""

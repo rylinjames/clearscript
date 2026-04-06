@@ -1,10 +1,13 @@
 """Feature 6: Audit Request Generator"""
 
-from fastapi import APIRouter
+import logging
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, Literal
 from services.ai_service import generate_audit_letter
 from services.data_service import get_claims, audit_report
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -76,7 +79,14 @@ async def generate_audit(request: AuditRequest = None):
         claims = get_claims()
         findings = audit_report(claims)
 
-    result = await generate_audit_letter(contract_data, findings)
+    try:
+        result = await generate_audit_letter(contract_data, findings)
+    except Exception as e:
+        logger.error(f"Audit letter generation failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI audit letter generation is currently unavailable: {e}",
+        )
     audit_type_info = AUDIT_TYPE_INFO[audit_type]
 
     return {
