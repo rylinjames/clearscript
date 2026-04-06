@@ -16,24 +16,13 @@ interface RebateDrug {
   retainedPct: number;
 }
 
-const demoData = {
-  totalRebates: 42300000,
-  totalPassedThrough: 37224000,
-  totalRetained: 5076000,
-  leakagePct: 12.0,
-  drugs: [
-    { drug: "Humira", manufacturer: "AbbVie", totalRebate: 8200000, passedThrough: 6970000, retained: 1230000, retainedPct: 15.0 },
-    { drug: "Eliquis", manufacturer: "BMS/Pfizer", totalRebate: 5400000, passedThrough: 4860000, retained: 540000, retainedPct: 10.0 },
-    { drug: "Ozempic", manufacturer: "Novo Nordisk", totalRebate: 6100000, passedThrough: 5124000, retained: 976000, retainedPct: 16.0 },
-    { drug: "Keytruda", manufacturer: "Merck", totalRebate: 4800000, passedThrough: 4320000, retained: 480000, retainedPct: 10.0 },
-    { drug: "Stelara", manufacturer: "J&J", totalRebate: 3900000, passedThrough: 3276000, retained: 624000, retainedPct: 16.0 },
-    { drug: "Dupixent", manufacturer: "Regeneron/Sanofi", totalRebate: 3200000, passedThrough: 2816000, retained: 384000, retainedPct: 12.0 },
-    { drug: "Jardiance", manufacturer: "Boehringer", totalRebate: 2800000, passedThrough: 2520000, retained: 280000, retainedPct: 10.0 },
-    { drug: "Trulicity", manufacturer: "Eli Lilly", totalRebate: 3100000, passedThrough: 2604000, retained: 496000, retainedPct: 16.0 },
-    { drug: "Xarelto", manufacturer: "J&J/Bayer", totalRebate: 2400000, passedThrough: 2208000, retained: 192000, retainedPct: 8.0 },
-    { drug: "Skyrizi", manufacturer: "AbbVie", totalRebate: 2400000, passedThrough: 1526000, retained: 874000, retainedPct: 36.4 },
-  ] as RebateDrug[],
-};
+interface RebateData {
+  totalRebates: number;
+  totalPassedThrough: number;
+  totalRetained: number;
+  leakagePct: number;
+  drugs: RebateDrug[];
+}
 
 function formatCurrency(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -71,7 +60,8 @@ export default function RebatesPage() {
   const { toast } = useToast();
   usePageTitle("Rebate Tracker");
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(demoData);
+  const [data, setData] = useState<RebateData | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [claimsStatus, setClaimsStatus] = useState<ClaimsStatus | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -83,41 +73,49 @@ export default function RebatesPage() {
   }, []);
 
   const fetchData = useCallback(async () => {
+    setError(null);
     try {
       const res = await fetch("/api/rebates/analysis");
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        let detail = `Rebate analysis failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
       const json = await res.json();
       const ra = json?.rebate_analysis;
-      if (ra) {
-        const manufacturers: Record<string, string> = {
-          "Trulicity": "Eli Lilly", "Ozempic": "Novo Nordisk", "Humira": "AbbVie",
-          "Insulin Glargine": "Sanofi", "Stelara": "J&J", "Eliquis": "BMS/Pfizer",
-          "Jardiance": "Boehringer", "Keytruda": "Merck", "Dupixent": "Regeneron/Sanofi",
-          "Skyrizi": "AbbVie", "Xarelto": "J&J/Bayer",
-        };
-        setData({
-          totalRebates: ra.total_rebates_earned,
-          totalPassedThrough: ra.rebates_passed_to_plan,
-          totalRetained: ra.rebates_retained_by_pbm,
-          leakagePct: ra.leakage_pct,
-          drugs: (ra.top_leakage_drugs || []).map((d: Record<string, unknown>) => {
-            const name = (d.drug_name as string) || "";
-            const baseName = name.split(" ")[0];
-            return {
-              drug: name,
-              manufacturer: manufacturers[baseName] || "Pharmaceutical Co.",
-              totalRebate: (d.total_rebate as number) || 0,
-              passedThrough: (d.amount_passed as number) || 0,
-              retained: (d.amount_retained_by_pbm as number) || 0,
-              retainedPct: d.passthrough_rate ? 100 - (d.passthrough_rate as number) : 0,
-            };
-          }),
-        });
-      } else {
-        setData(demoData);
+      if (!ra) {
+        throw new Error("Rebate analysis response was missing the expected `rebate_analysis` field.");
       }
-    } catch {
-      setData(demoData);
+      const manufacturers: Record<string, string> = {
+        "Trulicity": "Eli Lilly", "Ozempic": "Novo Nordisk", "Humira": "AbbVie",
+        "Insulin Glargine": "Sanofi", "Stelara": "J&J", "Eliquis": "BMS/Pfizer",
+        "Jardiance": "Boehringer", "Keytruda": "Merck", "Dupixent": "Regeneron/Sanofi",
+        "Skyrizi": "AbbVie", "Xarelto": "J&J/Bayer",
+      };
+      setData({
+        totalRebates: ra.total_rebates_earned,
+        totalPassedThrough: ra.rebates_passed_to_plan,
+        totalRetained: ra.rebates_retained_by_pbm,
+        leakagePct: ra.leakage_pct,
+        drugs: (ra.top_leakage_drugs || []).map((d: Record<string, unknown>) => {
+          const name = (d.drug_name as string) || "";
+          const baseName = name.split(" ")[0];
+          return {
+            drug: name,
+            manufacturer: manufacturers[baseName] || "Pharmaceutical Co.",
+            totalRebate: (d.total_rebate as number) || 0,
+            passedThrough: (d.amount_passed as number) || 0,
+            retained: (d.amount_retained_by_pbm as number) || 0,
+            retainedPct: d.passthrough_rate ? 100 - (d.passthrough_rate as number) : 0,
+          };
+        }),
+      });
+    } catch (e) {
+      setData(null);
+      setError(e instanceof Error ? e.message : "Rebate analysis failed");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -141,6 +139,39 @@ export default function RebatesPage() {
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
         <p className="text-sm text-gray-500">Loading rebate analysis...</p>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="animate-fade-in">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+            <DollarSign className="w-7 h-7 text-primary-600" />
+            Rebate Passthrough Tracker
+          </h1>
+          <p className="text-gray-500 mt-1">Track manufacturer rebate flow from PBM to plan sponsor</p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-900">Rebate analysis is unavailable</p>
+              <p className="text-sm text-amber-800 mt-1">
+                {error || "The rebate analysis service did not return data. Upload claims data on the Claims page, then come back."}
+              </p>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded-md hover:bg-amber-50 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

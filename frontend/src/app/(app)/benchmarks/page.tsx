@@ -44,13 +44,6 @@ interface IraDrug {
   effective_date?: string;
 }
 
-const demoMetrics: BenchmarkMetric[] = [
-  { label: "Cost per Script", yourValue: 68.42, peerAverage: 54.10, percentile: 28, unit: "$", lowerIsBetter: true },
-  { label: "Rebate Passthrough", yourValue: 88.0, peerAverage: 94.5, percentile: 22, unit: "%", lowerIsBetter: false },
-  { label: "Specialty Spend", yourValue: 52.3, peerAverage: 44.8, percentile: 75, unit: "%", lowerIsBetter: true },
-  { label: "Generic Fill Rate", yourValue: 89.1, peerAverage: 91.8, percentile: 35, unit: "%", lowerIsBetter: false },
-];
-
 const radarData = [
   { metric: "Cost Efficiency", you: 45, peers: 72 },
   { metric: "Rebate Passthrough", you: 62, peers: 85 },
@@ -153,10 +146,10 @@ export default function BenchmarksPage() {
             { label: "Generic Rate", yourValue: pct(yp.generic_dispensing_rate), peerAverage: pct(pb.generic_dispensing_rate), unit: "%", lowerIsBetter: false, percentile: 15 },
           ]);
         } else {
-          setMetrics(demoMetrics);
+          setMetrics([]);
         }
       } catch {
-        setMetrics(demoMetrics);
+        setMetrics([]);
       } finally {
         setLoading(false);
       }

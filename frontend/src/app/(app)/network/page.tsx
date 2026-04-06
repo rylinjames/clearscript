@@ -24,36 +24,13 @@ interface PhantomPharmacy {
 
 const sampleZips = "10001, 10002, 10003, 10010, 10011, 10012, 10013, 10014, 10016, 10017, 10019, 10021, 10022, 10023, 10024, 10025, 10028, 10029, 10030, 10031, 10032, 10033, 10034, 10035, 10036, 10037, 10038, 10039, 10040, 60601, 60602, 60604, 60605, 60606, 60607, 60608, 60610, 60611, 60614, 60615, 90001, 90002, 90003, 90004, 90005, 90006, 90007, 90008, 90010, 90011";
 
-const demoResults: ZipResult[] = [
-  { zip: "10001", pharmaciesInNetwork: 12, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.2 },
-  { zip: "10002", pharmaciesInNetwork: 8, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.3 },
-  { zip: "10003", pharmaciesInNetwork: 15, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.1 },
-  { zip: "10010", pharmaciesInNetwork: 6, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.4 },
-  { zip: "10031", pharmaciesInNetwork: 2, pharmaciesNeeded: 3, adequate: false, nearestPharmacyMiles: 1.8 },
-  { zip: "10034", pharmaciesInNetwork: 1, pharmaciesNeeded: 3, adequate: false, nearestPharmacyMiles: 2.4 },
-  { zip: "10039", pharmaciesInNetwork: 0, pharmaciesNeeded: 3, adequate: false, nearestPharmacyMiles: 4.2 },
-  { zip: "60601", pharmaciesInNetwork: 9, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.3 },
-  { zip: "60605", pharmaciesInNetwork: 4, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.6 },
-  { zip: "60608", pharmaciesInNetwork: 2, pharmaciesNeeded: 3, adequate: false, nearestPharmacyMiles: 1.9 },
-  { zip: "90001", pharmaciesInNetwork: 5, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.5 },
-  { zip: "90003", pharmaciesInNetwork: 3, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.8 },
-  { zip: "90005", pharmaciesInNetwork: 7, pharmaciesNeeded: 3, adequate: true, nearestPharmacyMiles: 0.2 },
-  { zip: "90008", pharmaciesInNetwork: 1, pharmaciesNeeded: 3, adequate: false, nearestPharmacyMiles: 3.1 },
-  { zip: "90011", pharmaciesInNetwork: 2, pharmaciesNeeded: 3, adequate: false, nearestPharmacyMiles: 2.3 },
-];
-
-const demoPhantoms: PhantomPharmacy[] = [
-  { name: "QuickRx Pharmacy #4412", npi: "1234567890", zip: "10039", reason: "License expired 8/2025, still listed as active in network" },
-  { name: "CareFirst Drugs", npi: "0987654321", zip: "60608", reason: "Closed permanently — location demolished" },
-  { name: "Valley Health Pharmacy", npi: "1122334455", zip: "90008", reason: "No claims processed in 18 months, phone disconnected" },
-];
-
 export default function NetworkPage() {
   usePageTitle("Network Adequacy");
   const [zipInput, setZipInput] = useState(sampleZips);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ZipResult[] | null>(null);
   const [phantoms, setPhantoms] = useState<PhantomPharmacy[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const hasAutoLoaded = useRef(false);
   useEffect(() => {
@@ -67,6 +44,7 @@ export default function NetworkPage() {
   const handleAnalyze = async () => {
     setLoading(true);
     setResults(null);
+    setError(null);
 
     const zips = zipInput.split(",").map((z) => z.trim()).filter(Boolean);
 
@@ -76,38 +54,37 @@ export default function NetworkPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ zip_codes: zips }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        let detail = `Network analysis failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
       const data = await res.json();
       const na = data?.network_analysis;
-      if (na?.coverage_areas && na.coverage_areas.length > 0) {
-        setResults(
-          na.coverage_areas.map((r: Record<string, unknown>) => ({
-            zip: (r.zip_code || r.zip) as string,
-            pharmaciesInNetwork: (r.pharmacies_within_5mi || r.pharmacies_in_network || 0) as number,
-            pharmaciesNeeded: 3,
-            adequate: (r.adequacy_met ?? r.adequate ?? false) as boolean,
-            nearestPharmacyMiles: (r.nearest_pharmacy_miles || (r.pharmacies_within_5mi ? 2.5 : 8.0)) as number,
-          }))
-        );
-      } else {
-        setResults(demoResults);
-      }
-      if (na?.phantom_details && na.phantom_details.length > 0) {
-        setPhantoms(
-          na.phantom_details.map((p: Record<string, unknown>) => ({
-            name: (p.name || "") as string,
-            npi: (p.npi || "") as string,
-            zip: (p.zip || p.zip_code || "") as string,
-            reason: (p.reason || p.reason_flagged || "") as string,
-          }))
-        );
-      } else {
-        setPhantoms(demoPhantoms);
-      }
-    } catch (err) {
-      console.error("Network analysis error:", err);
-      setResults(demoResults);
-      setPhantoms(demoPhantoms);
+      setResults(
+        (na?.coverage_areas || []).map((r: Record<string, unknown>) => ({
+          zip: (r.zip_code || r.zip) as string,
+          pharmaciesInNetwork: (r.pharmacies_within_5mi || r.pharmacies_in_network || 0) as number,
+          pharmaciesNeeded: 3,
+          adequate: (r.adequacy_met ?? r.adequate ?? false) as boolean,
+          nearestPharmacyMiles: (r.nearest_pharmacy_miles || (r.pharmacies_within_5mi ? 2.5 : 8.0)) as number,
+        }))
+      );
+      setPhantoms(
+        (na?.phantom_details || []).map((p: Record<string, unknown>) => ({
+          name: (p.name || "") as string,
+          npi: (p.npi || "") as string,
+          zip: (p.zip || p.zip_code || "") as string,
+          reason: (p.reason || p.reason_flagged || "") as string,
+        }))
+      );
+    } catch (e) {
+      setResults([]);
+      setPhantoms([]);
+      setError(e instanceof Error ? e.message : "Network analysis failed");
     } finally {
       setLoading(false);
     }

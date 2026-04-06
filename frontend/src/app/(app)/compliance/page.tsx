@@ -17,90 +17,26 @@ interface Deadline {
   authority: string;
 }
 
-const demoDeadlines: Deadline[] = [
-  {
-    id: "1",
-    regulation: "CMS MLR Reporting",
-    description: "Medical Loss Ratio reporting for fully-insured plans must be filed with CMS annually.",
-    dueDate: "2026-04-15",
-    daysUntilDue: 24,
-    status: "urgent",
-    authority: "Centers for Medicare & Medicaid Services",
-    actionItems: ["Compile claims data for reporting period", "Calculate rebate allocation by plan", "Submit via CMS HIOS portal", "Retain records for 10 years"],
-  },
-  {
-    id: "2",
-    regulation: "ERISA 5500 Filing",
-    description: "Annual return/report of employee benefit plan covering PBM service arrangements.",
-    dueDate: "2026-04-30",
-    daysUntilDue: 39,
-    status: "soon",
-    authority: "Department of Labor",
-    actionItems: ["Review Schedule A for PBM fees", "Verify Schedule C compensation disclosures", "Obtain PBM attestation letter", "File electronically via EFAST2"],
-  },
-  {
-    id: "3",
-    regulation: "PBM Transparency Report (State)",
-    description: "State-level PBM transparency reporting requirements for drug pricing and rebate data.",
-    dueDate: "2026-06-01",
-    daysUntilDue: 71,
-    status: "soon",
-    authority: "State Department of Insurance",
-    actionItems: ["Request data from PBM per state template", "Verify rebate and pricing accuracy", "Submit per state portal instructions"],
-  },
-  {
-    id: "4",
-    regulation: "Rx Drug Cost Transparency (CAA)",
-    description: "Consolidated Appropriations Act prescription drug cost reporting for group health plans.",
-    dueDate: "2026-06-01",
-    daysUntilDue: 71,
-    status: "soon",
-    authority: "HHS / DOL / Treasury",
-    actionItems: ["Gather top 50 drugs by cost and utilization", "Prepare D1/D2 data files", "Submit via CMS RxDC portal"],
-  },
-  {
-    id: "5",
-    regulation: "Gag Clause Attestation",
-    description: "Annual attestation that PBM contract does not contain gag clauses preventing cost disclosure.",
-    dueDate: "2026-12-31",
-    daysUntilDue: 284,
-    status: "upcoming",
-    authority: "CMS",
-    actionItems: ["Review PBM contract for gag clause provisions", "Confirm compliance with No Surprises Act", "Submit attestation via CMS portal"],
-  },
-  {
-    id: "6",
-    regulation: "Mental Health Parity Analysis",
-    description: "Comparative analysis of NQTL application between MH/SUD and medical/surgical benefits.",
-    dueDate: "2026-07-01",
-    daysUntilDue: 101,
-    status: "upcoming",
-    authority: "Department of Labor",
-    actionItems: ["Analyze prior auth rates by benefit classification", "Compare step therapy requirements", "Document quantitative and non-quantitative treatment limitations", "Prepare comparative analysis report"],
-  },
-  {
-    id: "7",
-    regulation: "ACA Preventive Services Update",
-    description: "Review formulary compliance with updated USPSTF preventive service recommendations.",
-    dueDate: "2027-01-01",
-    daysUntilDue: 285,
-    status: "upcoming",
-    authority: "HHS",
-    actionItems: ["Review USPSTF A and B recommendations", "Verify formulary covers required preventive drugs at $0 cost-sharing", "Update formulary if needed"],
-  },
-];
-
 export default function CompliancePage() {
   usePageTitle("Compliance Tracker");
   const [loading, setLoading] = useState(true);
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
+      setError(null);
       try {
         const res = await fetch("/api/compliance/deadlines");
-        if (!res.ok) throw new Error();
+        if (!res.ok) {
+          let detail = `Compliance deadlines failed with status ${res.status}`;
+          try {
+            const errJson = await res.json();
+            if (errJson?.detail) detail = String(errJson.detail);
+          } catch { /* not JSON */ }
+          throw new Error(detail);
+        }
         const data = await res.json();
         if (data?.deadlines?.length && data.deadlines[0].deadline) {
           setDeadlines(data.deadlines.map((d: Record<string, unknown>) => ({
@@ -114,10 +50,11 @@ export default function CompliancePage() {
             actionItems: typeof d.action_required === "string" ? [d.action_required as string] : (d.actionItems || []) as string[],
           })));
         } else {
-          setDeadlines(data?.deadlines || demoDeadlines);
+          setDeadlines([]);
         }
-      } catch {
-        setDeadlines(demoDeadlines);
+      } catch (e) {
+        setDeadlines([]);
+        setError(e instanceof Error ? e.message : "Failed to load compliance deadlines");
       } finally {
         setLoading(false);
       }
@@ -130,6 +67,23 @@ export default function CompliancePage() {
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
         <p className="text-sm text-gray-500">Loading compliance deadlines...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="animate-fade-in">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+            <CalendarClock className="w-7 h-7 text-primary-600" />
+            Compliance Deadline Tracker
+          </h1>
+        </div>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-semibold text-amber-900">Could not load compliance deadlines</p>
+          <p className="text-sm text-amber-800 mt-1">{error}</p>
+        </div>
       </div>
     );
   }

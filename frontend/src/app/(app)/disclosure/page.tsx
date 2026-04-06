@@ -19,29 +19,6 @@ interface GapItem {
   recommendation: string;
 }
 
-const demoChecklist: ChecklistItem[] = [
-  { item: "Rebate Revenue Disclosure", found: true, detail: "Total rebates received disclosed ($42.3M)" },
-  { item: "Administrative Fee Breakdown", found: true, detail: "Per-claim and per-member fees itemized" },
-  { item: "Spread Pricing Disclosure", found: false, detail: "No disclosure of ingredient cost vs. plan charge differences" },
-  { item: "Formulary Change Notifications", found: true, detail: "Semi-annual formulary update reports included" },
-  { item: "Network Pharmacy Reimbursement Rates", found: false, detail: "MAC list and reimbursement rates not shared" },
-  { item: "Mail-Order Pharmacy Revenue", found: true, detail: "Mail-order dispensing revenue separated" },
-  { item: "Specialty Pharmacy Margins", found: false, detail: "No visibility into specialty drug margins" },
-  { item: "Clinical Program Outcomes", found: true, detail: "Prior auth and step therapy savings quantified" },
-  { item: "GER/BER Guarantee Reporting", found: true, detail: "Generic and brand effective rate guarantees met" },
-  { item: "Manufacturer Revenue Streams", found: false, detail: "No disclosure of pharma manufacturer fees" },
-  { item: "Subcontractor Relationships", found: false, detail: "Third-party vendor relationships undisclosed" },
-  { item: "Claims Processing Accuracy", found: true, detail: "99.2% accuracy rate reported" },
-];
-
-const demoGaps: GapItem[] = [
-  { gap: "Spread Pricing Transparency", impact: "High", recommendation: "Require full ingredient cost disclosure for all claims" },
-  { gap: "MAC List Access", impact: "High", recommendation: "Demand quarterly MAC list publication with update notifications" },
-  { gap: "Specialty Drug Margins", impact: "Critical", recommendation: "Negotiate specialty carve-out or require margin disclosure" },
-  { gap: "Manufacturer Revenue", impact: "Critical", recommendation: "Include all revenue stream disclosure in contract amendment" },
-  { gap: "Subcontractor Disclosure", impact: "Medium", recommendation: "Request annual disclosure of all subcontracted services" },
-];
-
 const SAMPLE_DISCLOSURE_TEXT = `PBM INITIAL DISCLOSURE REPORT
 Prepared for: Heartland Employers Health Coalition
 Reporting Period: January 1, 2025 — June 30, 2025
@@ -156,47 +133,59 @@ export default function DisclosurePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const runAnalysis = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch("/api/disclosure/analyze", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      let detail = `Disclosure analysis failed with status ${res.status}`;
+      try {
+        const errJson = await res.json();
+        if (errJson?.detail) detail = String(errJson.detail);
+      } catch { /* not JSON */ }
+      throw new Error(detail);
+    }
+
+    const data = await res.json();
+    const a = data?.analysis;
+    if (!a?.items_checked) {
+      throw new Error("Disclosure response missing `items_checked` — the AI engine returned an incomplete result.");
+    }
+
+    setChecklist(
+      a.items_checked.map((ic: Record<string, unknown>) => ({
+        item: ic.item as string,
+        found: ic.found as boolean,
+        detail: (ic.details || ic.detail) as string,
+      }))
+    );
+
+    const gr = a.gap_report;
+    if (gr) {
+      const allGaps = [
+        ...(gr.critical_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Critical", recommendation: g })),
+        ...(gr.moderate_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "High", recommendation: g })),
+        ...(gr.minor_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Medium", recommendation: g })),
+      ];
+      setGaps(allGaps);
+    } else {
+      setGaps([]);
+    }
+  };
+
   const handleFileUpload = async (file: File) => {
     setLoading(true);
     setError(null);
     setChecklist(null);
     setGaps([]);
-
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const res = await fetch("/api/disclosure/analyze", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      const a = data?.analysis;
-      if (a?.items_checked) {
-        setChecklist(a.items_checked.map((ic: Record<string, unknown>) => ({
-          item: ic.item as string,
-          found: ic.found as boolean,
-          detail: (ic.details || ic.detail) as string,
-        })));
-        const gr = a.gap_report;
-        if (gr) {
-          const allGaps = [
-            ...(gr.critical_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Critical", recommendation: g })),
-            ...(gr.moderate_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "High", recommendation: g })),
-            ...(gr.minor_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Medium", recommendation: g })),
-          ];
-          setGaps(allGaps.length > 0 ? allGaps : demoGaps);
-        } else {
-          setGaps(demoGaps);
-        }
-      } else {
-        setChecklist(data.checklist || demoChecklist);
-        setGaps(data.gaps || demoGaps);
-      }
-    } catch {
-      setChecklist(demoChecklist);
-      setGaps(demoGaps);
+      await runAnalysis(file);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Disclosure analysis failed");
     } finally {
       setLoading(false);
     }
@@ -211,41 +200,10 @@ export default function DisclosurePage() {
 
     const blob = new Blob([SAMPLE_DISCLOSURE_TEXT], { type: "text/plain" });
     const file = new File([blob], "sample-pbm-disclosure.txt", { type: "text/plain" });
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const res = await fetch("/api/disclosure/analyze", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      const a = data?.analysis;
-      if (a?.items_checked) {
-        setChecklist(a.items_checked.map((ic: Record<string, unknown>) => ({
-          item: ic.item as string,
-          found: ic.found as boolean,
-          detail: (ic.details || ic.detail) as string,
-        })));
-        const gr = a.gap_report;
-        if (gr) {
-          const allGaps = [
-            ...(gr.critical_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Critical", recommendation: g })),
-            ...(gr.moderate_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "High", recommendation: g })),
-            ...(gr.minor_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Medium", recommendation: g })),
-          ];
-          setGaps(allGaps.length > 0 ? allGaps : demoGaps);
-        } else {
-          setGaps(demoGaps);
-        }
-      } else {
-        setChecklist(data.checklist || demoChecklist);
-        setGaps(data.gaps || demoGaps);
-      }
-    } catch {
-      setChecklist(demoChecklist);
-      setGaps(demoGaps);
+      await runAnalysis(file);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Disclosure analysis failed");
     } finally {
       setLoading(false);
     }

@@ -25,23 +25,6 @@ interface Discrepancy {
   detail: string;
 }
 
-const demoDiscrepancies: Discrepancy[] = [
-  { category: "Generic Dispensing Rate", reportedAmount: 91, expectedAmount: 88, difference: 3, severity: "info", detail: "Reported GDR exceeds guarantee — verify claims data" },
-  { category: "Brand Rebate Revenue ($M)", reportedAmount: 18.4, expectedAmount: 24.1, difference: -5.7, severity: "critical", detail: "Rebates $5.7M below expected per contracted rates" },
-  { category: "Admin Fees ($M)", reportedAmount: 3.2, expectedAmount: 2.8, difference: 0.4, severity: "warning", detail: "Admin fees exceed contracted per-claim rate by $0.4M" },
-  { category: "Mail-Order Utilization (%)", reportedAmount: 34, expectedAmount: 30, difference: 4, severity: "warning", detail: "Higher mail-order may indicate auto-refill steering" },
-  { category: "Specialty Drug Spend ($M)", reportedAmount: 42.6, expectedAmount: 38.1, difference: 4.5, severity: "critical", detail: "Specialty costs $4.5M above projection" },
-  { category: "Claims Processing Errors", reportedAmount: 0.3, expectedAmount: 0.5, difference: -0.2, severity: "info", detail: "Error rate within acceptable tolerance" },
-  { category: "Network Discount (%)", reportedAmount: 22.1, expectedAmount: 24.5, difference: -2.4, severity: "warning", detail: "Effective discount below guaranteed rate" },
-  { category: "Prior Auth Savings ($M)", reportedAmount: 6.8, expectedAmount: 8.2, difference: -1.4, severity: "warning", detail: "PA savings below projected — review denial rates" },
-];
-
-const chartData = demoDiscrepancies.map((d) => ({
-  name: d.category.replace(/ \(\$M\)| \(%\)/g, ""),
-  Actual: d.reportedAmount,
-  Contracted: d.expectedAmount,
-}));
-
 interface ClaimsStatus {
   custom_data_loaded: boolean;
   claims_count: number;
@@ -68,14 +51,23 @@ export default function ReportsPage() {
       const res = await fetch("/api/reports/audit");
       if (!res.ok) throw new Error();
       await res.json();
-      setDiscrepancies(demoDiscrepancies);
+      // TODO: map the /api/reports/audit response into Discrepancy[].
+      // The backend returns a structured audit result but the frontend
+      // parser has not been written yet. Render an empty state until then.
+      setDiscrepancies([]);
     } catch {
-      setDiscrepancies(demoDiscrepancies);
+      setDiscrepancies([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
+
+  const chartData = discrepancies.map((d) => ({
+    name: d.category.replace(/ \(\$M\)| \(%\)/g, ""),
+    Actual: d.reportedAmount,
+    Contracted: d.expectedAmount,
+  }));
 
   useEffect(() => {
     fetchClaimsStatus();

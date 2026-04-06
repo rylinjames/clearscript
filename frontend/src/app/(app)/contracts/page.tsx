@@ -178,52 +178,6 @@ interface BenchmarkObservation {
   supporting_detail?: string | null;
 }
 
-const demoTerms: ExtractedTerm[] = [
-  { clause: "Rebate Passthrough Guarantee", value: "100% passthrough", status: "good", note: "Industry best practice" },
-  { clause: "Spread Pricing Allowance", value: "Not prohibited", status: "critical", note: "No spread pricing ban -- PBM may retain spread" },
-  { clause: "Audit Rights", value: "Annual, 60-day notice", status: "warning", note: "Industry standard is 30-day notice" },
-  { clause: "Mail-Order Mandate", value: "Mandatory after 2 fills", status: "warning", note: "May limit member choice" },
-  { clause: "Formulary Change Notice", value: "60 days", status: "good", note: "Meets minimum requirement" },
-  { clause: "MAC List Transparency", value: "Not disclosed", status: "critical", note: "No visibility into MAC pricing" },
-  { clause: "Performance Guarantees", value: "Generic fill rate >88%", status: "good", note: "Reasonable target" },
-  { clause: "Specialty Drug Carve-Out", value: "None specified", status: "critical", note: "Specialty drugs under PBM control" },
-  { clause: "Contract Term", value: "3 years, auto-renew", status: "warning", note: "Auto-renewal may limit negotiation leverage" },
-  { clause: "Termination Clause", value: "180-day notice", status: "warning", note: "Long notice period favors PBM" },
-];
-
-const demoAuditChecklist: AuditChecklistItem[] = [
-  { item: "Annual audit right", found: true, details: "One audit per contract year permitted" },
-  { item: "30-day notice period or less", found: false, details: "60-day notice required -- exceeds best practice" },
-  { item: "Unrestricted scope (claims, rebates, pricing)", found: false, details: "Scope limited to pricing and rebate terms only" },
-  { item: "Access to pharmacy network agreements", found: false, details: "Explicitly excluded from audit scope" },
-  { item: "Access to manufacturer contracts", found: false, details: "Explicitly excluded from audit scope" },
-  { item: "Right to use independent auditor", found: true, details: "Plan sponsor may designate auditor" },
-  { item: "Plan sponsor bears audit costs only if compliant", found: false, details: "All costs borne by plan sponsor regardless" },
-  { item: "Electronic data access", found: true, details: "Data extracts in electronic format required" },
-  { item: "Statistical extrapolation allowed", found: false, details: "No mention of extrapolation rights" },
-  { item: "Audit lookback period >= 2 years", found: false, details: "Limited to current contract year" },
-  { item: "Remediation timeline specified", found: false, details: "No requirement for PBM to remediate findings" },
-];
-
-const demoRebateDefinition: EligibleRebateDefinition = {
-  narrow_definition_flag: true,
-  excludes_admin_fees: true,
-  excludes_volume_bonuses: true,
-  excludes_price_protection: true,
-  details: "Rebates defined narrowly as only payments 'specifically designated as rebates' by manufacturers. Admin fees, service fees, data fees, market share incentives, and price protection payments excluded.",
-};
-
-const demoDisputeResolution: DisputeResolution = {
-  mechanism: "litigation",
-  details: "Governed by Delaware law. No mediation or arbitration clause specified.",
-  risk_level: "medium",
-};
-
-const demoStatisticalExtrapolation = {
-  found: false,
-  details: "No statistical extrapolation clause found. Audit findings cannot be projected to full population.",
-};
-
 const analyzeCategories = [
   { icon: DollarSign, label: "Rebate Terms", description: "Passthrough guarantees, retention percentages" },
   { icon: BarChart3, label: "Spread Pricing", description: "Ingredient cost vs. plan charge provisions" },
@@ -459,13 +413,6 @@ export default function ContractsPage() {
     }
   };
 
-  const loadDemoExtras = () => {
-    setAuditChecklist(demoAuditChecklist);
-    setRebateDefinition(demoRebateDefinition);
-    setDisputeResolution(demoDisputeResolution);
-    setStatisticalExtrapolation(demoStatisticalExtrapolation);
-  };
-
   const processResponse = (data: Record<string, unknown>) => {
     const a = data?.analysis as AnalysisExtras | undefined;
     if (a && a.rebate_passthrough) {
@@ -473,9 +420,14 @@ export default function ContractsPage() {
       loadExtras(a);
       setRawContractAnalysis(a as Record<string, unknown>);
     } else {
-      setTerms((data.terms as ExtractedTerm[]) || demoTerms);
-      loadDemoExtras();
-      setRawContractAnalysis(null);
+      // The backend returned success but the analysis shape is missing
+      // rebate_passthrough — this usually means the AI response was truncated
+      // or malformed. Surface it rather than quietly showing a fake analysis.
+      throw new Error(
+        "Analysis response was incomplete. The AI engine returned a result " +
+        "without the expected fields. Please retry — if it persists, the " +
+        "AI service may be degraded."
+      );
     }
   };
 
@@ -493,7 +445,14 @@ export default function ContractsPage() {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        let detail = `Plan document upload failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
       const data = await res.json();
       setPlanBenefits(data.benefits as PlanBenefits);
       setPlanDocType(data.document_type);
@@ -502,8 +461,9 @@ export default function ContractsPage() {
       if (rawContractAnalysis && data.benefits) {
         runCrossReference(rawContractAnalysis, data.benefits);
       }
-    } catch {
+    } catch (e) {
       setPlanBenefits(null);
+      setError(e instanceof Error ? e.message : "Plan document upload failed");
     } finally {
       setPlanLoading(false);
     }
@@ -520,11 +480,19 @@ export default function ContractsPage() {
           plan_benefits: planData,
         }),
       });
-      if (!res.ok) throw new Error("Cross-reference failed");
+      if (!res.ok) {
+        let detail = `Cross-reference failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
       const data = await res.json();
       setCrossRef(data.cross_reference as CrossRefResult);
-    } catch {
+    } catch (e) {
       setCrossRef(null);
+      setError(e instanceof Error ? e.message : "Cross-reference failed");
     } finally {
       setCrossRefLoading(false);
     }
@@ -580,12 +548,21 @@ export default function ContractsPage() {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        // Try to pull the real error detail out of the FastAPI response body
+        // so the user sees "AI contract analysis is currently unavailable: ..."
+        // instead of a generic "Upload failed".
+        let detail = `Upload failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
       const data = await res.json();
       processResponse(data);
-    } catch {
-      setTerms(demoTerms);
-      loadDemoExtras();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setLoading(false);
     }
@@ -611,12 +588,18 @@ export default function ContractsPage() {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        let detail = `Upload failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
       const data = await res.json();
       processResponse(data);
-    } catch {
-      setTerms(demoTerms);
-      loadDemoExtras();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setLoading(false);
     }

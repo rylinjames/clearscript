@@ -5,78 +5,6 @@ import { usePageTitle } from "@/components/PageTitle";
 import { useToast } from "@/components/Toast";
 import { Mail, Loader2, Copy, Download, Check, ClipboardList } from "lucide-react";
 
-const demoLetter = `[YOUR COMPANY LETTERHEAD]
-
-Date: March 22, 2026
-
-Re: Formal Audit Request Pursuant to Section 8.2 of PBM Services Agreement
-
-Dear OptumRx Audit & Compliance Department,
-
-Pursuant to Section 8.2 (Audit Rights) of the Pharmacy Benefit Management Services Agreement dated January 15, 2024, between Acme Corporation ("Plan Sponsor") and OptumRx ("PBM"), this letter constitutes a formal request to conduct an audit of PBM operations and financial records.
-
-SCOPE OF AUDIT
-
-The audit will examine the following areas for the period of January 1, 2025 through December 31, 2025:
-
-1. REBATE PASSTHROUGH VERIFICATION
-   - All manufacturer rebate agreements and rebate revenue received
-   - Documentation of rebate passthrough calculations
-   - Reconciliation of rebates received vs. rebates passed through to Plan Sponsor
-
-2. PRICING AND SPREAD ANALYSIS
-   - Ingredient cost paid to pharmacies vs. amounts billed to Plan Sponsor
-   - MAC list pricing methodology and updates
-   - Dispensing fee schedules by channel (retail, mail, specialty)
-
-3. CLAIMS PROCESSING ACCURACY
-   - Random sample of 500+ claims for pricing verification
-   - Duplicate claim identification
-   - Correct application of plan design (copays, coinsurance, deductibles)
-
-4. FORMULARY MANAGEMENT
-   - Documentation of all formulary changes during audit period
-   - Evidence of required advance notifications
-   - Analysis of therapeutic substitution patterns
-
-5. NETWORK ADEQUACY
-   - Current pharmacy network composition
-   - Any phantom or terminated pharmacy billing
-   - Network access standards compliance
-
-AUDIT TIMELINE
-
-Per our agreement, we are providing 60 days advance notice. The on-site audit is expected to commence on or about May 22, 2026. We request that all electronic data be made available no later than May 8, 2026.
-
-AUDIT TEAM
-
-The audit will be conducted by [Audit Firm Name], our designated independent auditor, with full access rights as specified in Section 8.2(c) of our agreement.
-
-DATA REQUIREMENTS
-
-Please prepare the following data extracts in electronic format:
-- Complete claims file (all fields) for the audit period
-- Rebate receipts and allocation reports
-- Pharmacy reimbursement records
-- Formulary change logs with effective dates
-- Network pharmacy directory with status codes
-
-CONFIDENTIALITY
-
-All audit activities will be conducted in accordance with the confidentiality provisions of our agreement and applicable HIPAA regulations.
-
-Please confirm receipt of this audit request and designate a point of contact for coordination within 10 business days.
-
-Sincerely,
-
-[Authorized Representative]
-[Title]
-Acme Corporation
-[Contact Information]
-
-cc: [Internal Counsel]
-    [Benefits Director]`;
-
 const auditTypeDescriptions = {
   financial: "Verify numbers -- claims, rebates, spreads match contract terms",
   process: "Evaluate PBM administration -- formulary compliance, PA turnaround, claims accuracy",
@@ -100,6 +28,7 @@ export default function AuditPage() {
   const [auditType, setAuditType] = useState<"financial" | "process">("financial");
   const [loading, setLoading] = useState(false);
   const [letter, setLetter] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [auditTypeInfo, setAuditTypeInfo] = useState<AuditTypeInfo | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -107,6 +36,7 @@ export default function AuditPage() {
     setLoading(true);
     setLetter(null);
     setAuditTypeInfo(null);
+    setError(null);
 
     try {
       const res = await fetch("/api/audit/generate", {
@@ -120,7 +50,14 @@ export default function AuditPage() {
           audit_type: auditType,
         }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        let detail = `Audit letter generation failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
       const data = await res.json();
       const resolvedLetter =
         typeof data.letter === "string"
@@ -129,7 +66,10 @@ export default function AuditPage() {
             ? data.letter.letter_text
             : typeof data.letter_payload?.letter_text === "string"
               ? data.letter_payload.letter_text
-              : demoLetter;
+              : null;
+      if (!resolvedLetter) {
+        throw new Error("Audit letter response was empty. The AI engine returned no letter text — please retry.");
+      }
       setLetter(resolvedLetter);
       if (data.audit_type_info) {
         setAuditTypeInfo({
@@ -138,8 +78,8 @@ export default function AuditPage() {
           checklist: data.audit_type_info.checklist || data.audit_type_info.checks || [],
         });
       }
-    } catch {
-      setLetter(demoLetter);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Audit letter generation failed");
     } finally {
       setLoading(false);
     }
@@ -365,6 +305,11 @@ export default function AuditPage() {
               <div className="flex flex-col items-center justify-center py-20 gap-3">
                 <Loader2 className="w-6 h-6 text-primary-600 animate-spin" />
                 <p className="text-xs text-gray-400">Generating letter...</p>
+              </div>
+            ) : error ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-semibold text-amber-900">Audit letter generation failed</p>
+                <p className="text-sm text-amber-800 mt-1">{error}</p>
               </div>
             ) : letter ? (
               <pre className="text-xs text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4 max-h-[600px] overflow-y-auto font-mono leading-relaxed border border-gray-100">

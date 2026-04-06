@@ -26,29 +26,23 @@ interface SpreadDrug {
   spreadPct: number;
 }
 
-const demoChannels = {
-  retail: { totalClaims: 142000, totalSpread: 1840000, avgSpreadPerClaim: 12.96 },
-  mailOrder: { totalClaims: 48000, totalSpread: 2160000, avgSpreadPerClaim: 45.0 },
-  specialty: { totalClaims: 8200, totalSpread: 3400000, avgSpreadPerClaim: 414.63 },
+interface ChannelStats {
+  totalClaims: number;
+  totalSpread: number;
+  avgSpreadPerClaim: number;
+}
+
+interface Channels {
+  retail: ChannelStats;
+  mailOrder: ChannelStats;
+  specialty: ChannelStats;
+}
+
+const EMPTY_CHANNELS: Channels = {
+  retail: { totalClaims: 0, totalSpread: 0, avgSpreadPerClaim: 0 },
+  mailOrder: { totalClaims: 0, totalSpread: 0, avgSpreadPerClaim: 0 },
+  specialty: { totalClaims: 0, totalSpread: 0, avgSpreadPerClaim: 0 },
 };
-
-const demoDrugs: SpreadDrug[] = [
-  { drug: "Atorvastatin 40mg", channel: "Retail", planPaid: 28.50, pharmacyReimbursed: 8.20, spread: 20.30, spreadPct: 71.2 },
-  { drug: "Lisinopril 20mg", channel: "Retail", planPaid: 22.00, pharmacyReimbursed: 4.10, spread: 17.90, spreadPct: 81.4 },
-  { drug: "Metformin 1000mg", channel: "Retail", planPaid: 18.75, pharmacyReimbursed: 3.50, spread: 15.25, spreadPct: 81.3 },
-  { drug: "Humira (pen)", channel: "Specialty", planPaid: 6800.00, pharmacyReimbursed: 5200.00, spread: 1600.00, spreadPct: 23.5 },
-  { drug: "Ozempic 1mg", channel: "Mail-Order", planPaid: 892.00, pharmacyReimbursed: 680.00, spread: 212.00, spreadPct: 23.8 },
-  { drug: "Eliquis 5mg", channel: "Mail-Order", planPaid: 520.00, pharmacyReimbursed: 380.00, spread: 140.00, spreadPct: 26.9 },
-  { drug: "Stelara 90mg", channel: "Specialty", planPaid: 13200.00, pharmacyReimbursed: 11400.00, spread: 1800.00, spreadPct: 13.6 },
-  { drug: "Amlodipine 10mg", channel: "Retail", planPaid: 15.00, pharmacyReimbursed: 2.80, spread: 12.20, spreadPct: 81.3 },
-  { drug: "Jardiance 25mg", channel: "Mail-Order", planPaid: 540.00, pharmacyReimbursed: 410.00, spread: 130.00, spreadPct: 24.1 },
-  { drug: "Dupixent 300mg", channel: "Specialty", planPaid: 3800.00, pharmacyReimbursed: 2900.00, spread: 900.00, spreadPct: 23.7 },
-];
-
-const chartData = demoDrugs.slice(0, 8).map((d) => ({
-  name: d.drug.split(" ")[0],
-  Spread: d.spread,
-}));
 
 function formatCurrency(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -67,9 +61,14 @@ export default function SpreadPage() {
   usePageTitle("Spread Pricing");
   const [loading, setLoading] = useState(true);
   const [drugs, setDrugs] = useState<SpreadDrug[]>([]);
-  const [channels, setChannels] = useState(demoChannels);
+  const [channels, setChannels] = useState<Channels>(EMPTY_CHANNELS);
   const [claimsStatus, setClaimsStatus] = useState<ClaimsStatus | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  const chartData = drugs.slice(0, 8).map((d) => ({
+    name: d.drug.split(" ")[0],
+    Spread: d.spread,
+  }));
 
   const fetchClaimsStatus = useCallback(async () => {
     try {

@@ -44,28 +44,6 @@ interface CompareResult {
   };
 }
 
-const demoSwaps: FormularySwap[] = [
-  { date: "2025-11-01", oldDrug: "Humira (adalimumab)", newDrug: "Hadlima (biosimilar)", oldCost: 6800, newCost: 5100, priceChange: -25, rebateImpact: "Rebate loss: $1.2M/yr", severity: "critical", reason: "Biosimilar swap eliminates brand rebate -- net cost may increase" },
-  { date: "2025-10-15", oldDrug: "Lantus (insulin glargine)", newDrug: "Semglee (biosimilar)", oldCost: 340, newCost: 180, priceChange: -47, rebateImpact: "Rebate loss: $800K/yr", severity: "warning", reason: "Biosimilar swap with significant rebate reduction" },
-  { date: "2025-09-01", oldDrug: "Lipitor (atorvastatin 20mg)", newDrug: "Rosuvastatin 10mg", oldCost: 15, newCost: 22, priceChange: 47, rebateImpact: "New rebate: +$200K/yr", severity: "critical", reason: "Therapeutic swap to more expensive statin -- rebate-driven?" },
-  { date: "2025-08-15", oldDrug: "Protonix (pantoprazole)", newDrug: "Omeprazole", oldCost: 28, newCost: 8, priceChange: -71, rebateImpact: "Minimal impact", severity: "info", reason: "Generic substitution -- appropriate cost reduction" },
-  { date: "2025-07-01", oldDrug: "Celebrex (celecoxib)", newDrug: "Meloxicam", oldCost: 45, newCost: 12, priceChange: -73, rebateImpact: "Rebate loss: $150K/yr", severity: "info", reason: "Therapeutic alternative -- clinically reasonable" },
-  { date: "2025-06-01", oldDrug: "Crestor (rosuvastatin 20mg)", newDrug: "Livalo (pitavastatin)", oldCost: 18, newCost: 350, priceChange: 1844, rebateImpact: "New rebate: +$1.8M/yr", severity: "critical", reason: "Brand swap with massive price increase -- likely rebate-motivated" },
-  { date: "2025-05-15", oldDrug: "Nexium (esomeprazole)", newDrug: "Dexilant (dexlansoprazole)", oldCost: 22, newCost: 380, priceChange: 1627, rebateImpact: "New rebate: +$900K/yr", severity: "critical", reason: "Brand-to-brand swap with extreme price increase" },
-  { date: "2025-04-01", oldDrug: "Metformin ER 500mg", newDrug: "Metformin ER 750mg", oldCost: 8, newCost: 12, priceChange: 50, rebateImpact: "No impact", severity: "warning", reason: "Dose form change -- may affect member convenience" },
-];
-
-const demoTimeline: TimelineEvent[] = [
-  { date: "2025-11-01", description: "4 drugs removed, 3 biosimilars added, 1 tier change", type: "swap" },
-  { date: "2025-10-15", description: "Insulin formulary restructured -- 2 products swapped", type: "swap" },
-  { date: "2025-09-01", description: "Statin preferred list changed -- rosuvastatin now preferred", type: "tier_change" },
-  { date: "2025-08-15", description: "2 generics added to preferred tier", type: "addition" },
-  { date: "2025-07-01", description: "NSAID formulary updated -- 1 removal, 1 addition", type: "swap" },
-  { date: "2025-06-01", description: "Major statin swap -- Crestor replaced by Livalo", type: "swap" },
-  { date: "2025-05-15", description: "PPI formulary change -- brand-to-brand swap flagged", type: "swap" },
-  { date: "2025-04-01", description: "Metformin formulation change", type: "tier_change" },
-];
-
 export default function FormularyPage() {
   usePageTitle("Formulary Detector");
   const [loading, setLoading] = useState(true);
@@ -102,12 +80,12 @@ export default function FormularyPage() {
             reason: (f.reason as string) || "",
           })));
         } else {
-          setSwaps(demoSwaps);
+          setSwaps([]);
         }
-        setTimeline(data?.timeline || demoTimeline);
+        setTimeline(data?.timeline || []);
       } catch {
-        setSwaps(demoSwaps);
-        setTimeline(demoTimeline);
+        setSwaps([]);
+        setTimeline([]);
       } finally {
         setLoading(false);
       }
