@@ -40,14 +40,24 @@ def _get_client():
                 logger.info("OpenAI client initialized")
     return _client
 
-async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000) -> str:
+async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 16000) -> str:
     """
     Run OpenAI generation in a thread to keep it async-compatible.
 
-    Note: the gpt-5 family rejects the legacy `max_tokens` parameter (use
-    `max_completion_tokens`) and rejects any `temperature` other than the
-    default 1. The argument name on this function stays `max_tokens` so
-    callers don't have to change.
+    Notes on the gpt-5 family:
+      * It rejects the legacy `max_tokens` parameter — use
+        `max_completion_tokens` instead.
+      * It rejects any `temperature` other than the default 1.
+      * `max_completion_tokens` is a budget for BOTH reasoning tokens
+        AND output tokens combined. If the budget is too small the model
+        spends all of it on internal reasoning and returns an empty
+        message body, which then crashes `json.loads("")`. The default
+        here is set high enough (16k) that reasoning + structured JSON
+        output both fit comfortably.
+
+    The argument name on this function stays `max_tokens` so the six
+    callers in ai_service / spc_service / plan_crossref_service don't
+    have to change.
     """
     client = _get_client()
     def _call():
@@ -61,17 +71,30 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000
             max_completion_tokens=max_tokens,
         )
         text = response.choices[0].message.content
-        if text:
-            text = text.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1]
-                if text.endswith("```"):
-                    text = text[:-3].strip()
+        finish_reason = response.choices[0].finish_reason
+        if not text:
+            # gpt-5 reasoning models return empty content when the
+            # max_completion_tokens budget is consumed entirely by
+            # internal reasoning. Surface that as a real error instead
+            # of letting json.loads("") raise a confusing "Expecting
+            # value: line 1 column 1" downstream.
+            raise RuntimeError(
+                f"OpenAI returned empty content (finish_reason={finish_reason}). "
+                f"This usually means max_completion_tokens={max_tokens} was "
+                f"consumed entirely by reasoning. Increase the budget."
+            )
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1]
+            if text.endswith("```"):
+                text = text[:-3].strip()
         return text
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=30.0)
+        # gpt-5 reasoning runs are slower than legacy chat models, so
+        # the 30s timeout that worked for gpt-4o-mini is too tight.
+        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=120.0)
     except asyncio.TimeoutError:
-        raise TimeoutError("OpenAI API call timed out after 30 seconds")
+        raise TimeoutError("OpenAI API call timed out after 120 seconds")
 
 # ─── Contract Analysis ──────────────────────────────────────────────────────────
 
