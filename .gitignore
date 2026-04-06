@@ -11,3 +11,5 @@ node_modules/
 backend/.venv/
 backend/data/cms/*.csv
 .vercel
+*.tsbuildinfo
+.pytest_cache/

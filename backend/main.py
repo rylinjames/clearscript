@@ -167,7 +167,12 @@ async def dashboard_stats():
 
     latest = (latest_analysis or {}).get("analysis", {}) if latest_analysis else {}
     if isinstance(latest, dict) and latest:
-        latest = enrich_contract_analysis(dict(latest))
+        try:
+            latest = enrich_contract_analysis(dict(latest))
+        except Exception as e:
+            logger.warning(f"enrich_contract_analysis failed on dashboard read: {e}")
+            # Fall back to the raw (un-enriched) analysis so the dashboard
+            # still renders something instead of 500-ing the whole page.
     weighted = latest.get("weighted_assessment", {}) if isinstance(latest, dict) else {}
     exposure = latest.get("financial_exposure", {}) if isinstance(latest, dict) else {}
     top_risks = latest.get("top_risks", []) if isinstance(latest, dict) else []
