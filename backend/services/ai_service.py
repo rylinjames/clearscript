@@ -41,7 +41,14 @@ def _get_client():
     return _client
 
 async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000) -> str:
-    """Run OpenAI generation in a thread to keep it async-compatible."""
+    """
+    Run OpenAI generation in a thread to keep it async-compatible.
+
+    Note: the gpt-5 family rejects the legacy `max_tokens` parameter (use
+    `max_completion_tokens`) and rejects any `temperature` other than the
+    default 1. The argument name on this function stays `max_tokens` so
+    callers don't have to change.
+    """
     client = _get_client()
     def _call():
         response = client.chat.completions.create(
@@ -51,8 +58,7 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 3000
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.2,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
         )
         text = response.choices[0].message.content
         if text:
