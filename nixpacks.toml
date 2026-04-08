@@ -1,0 +1,27 @@
+# Nixpacks build config for the Railway deployment.
+#
+# Tells Railway:
+#   - This is a Python project
+#   - Use Python 3.13 (matches Render's pinned version and what we test against locally)
+#   - Install dependencies from backend/requirements.txt
+#   - Start the FastAPI app from the backend/ subdirectory
+#
+# Combined with railway.json, this makes the repo self-describing for
+# Railway. A fresh clone + Railway deploy works without any dashboard
+# clicking beyond the OPENAI_API_KEY environment variable.
+
+[phases.setup]
+nixPkgs = ["python313", "gcc"]
+
+[phases.install]
+cmds = [
+  "python -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install --no-cache-dir --upgrade pip",
+  ". /opt/venv/bin/activate && pip install --no-cache-dir -r backend/requirements.txt",
+]
+
+[phases.build]
+cmds = ["echo 'no build step required for FastAPI'"]
+
+[start]
+cmd = "cd backend && /opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $PORT"

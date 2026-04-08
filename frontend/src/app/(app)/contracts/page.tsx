@@ -499,7 +499,16 @@ export default function ContractsPage() {
   };
 
   const handleExportPDF = async () => {
-    if (!rawContractAnalysis) return;
+    setError(null);
+    if (!rawContractAnalysis) {
+      // Used to silently `return` here, which made the export button feel
+      // broken when clicked before an upload had completed. Surface it.
+      setError(
+        "There is no analysis to export yet. Upload a PBM contract first, " +
+        "wait for the analysis to finish, then click Export PDF Report."
+      );
+      return;
+    }
     setExporting(true);
     try {
       const res = await fetch("/api/contracts/export-pdf", {
@@ -513,18 +522,31 @@ export default function ContractsPage() {
           cross_reference: crossRef || undefined,
         }),
       });
-      if (!res.ok) throw new Error("Export failed");
+      if (!res.ok) {
+        // Pull the real FastAPI detail out of the body so the user sees
+        // why the export failed instead of a generic "Export failed".
+        let detail = `PDF export failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON — body was probably the PDF or empty */ }
+        throw new Error(detail);
+      }
       const blob = await res.blob();
+      if (blob.size === 0) {
+        throw new Error("PDF export returned an empty file. The backend may have failed to render the report.");
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `ClearScript_Report_${contractFilename.replace(/\.[^.]+$/, "")}.pdf`;
+      a.download = `ClearScript_Report_${(contractFilename || "PBM_Contract").replace(/\.[^.]+$/, "")}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("PDF export failed:", err);
+      setError(err instanceof Error ? err.message : "PDF export failed");
     } finally {
       setExporting(false);
     }
@@ -620,7 +642,11 @@ export default function ContractsPage() {
   const controlPosture = (rawContractAnalysis?.control_posture as ControlPosture | undefined) || undefined;
   const structuralRiskOverride = (rawContractAnalysis?.structural_risk_override as StructuralRiskOverride | undefined) || undefined;
   const benchmarkObservations = ((rawContractAnalysis?.benchmark_observations as BenchmarkObservation[] | undefined) || []).slice(0, 4);
-  const immediateActions = ((rawContractAnalysis?.immediate_actions as string[] | undefined) || []).slice(0, 3);
+  // All immediate actions from the contract analysis. Used to be sliced to
+  // 3 and tucked into a sidebar subhead — now rendered as a top-level panel
+  // right under the deal-score metric cards so it's the second thing the
+  // user sees, regardless of whether they uploaded a plan document.
+  const immediateActions = (rawContractAnalysis?.immediate_actions as string[] | undefined) || [];
   const linkedFindings = ((rawContractAnalysis?.linked_findings as Array<Record<string, string>> | undefined) || []).slice(0, 3);
   const dealDiagnosis = (rawContractAnalysis?.deal_diagnosis as string | undefined) || (rawContractAnalysis?.summary as string | undefined) || null;
   const auditImplication = (rawContractAnalysis?.audit_implication as string | undefined) || null;
@@ -776,6 +802,30 @@ export default function ContractsPage() {
             </div>
           </div>
 
+          {immediateActions.length > 0 && (
+            <div className="bg-white rounded-xl border-2 border-primary-200 shadow-[var(--shadow-card)] overflow-hidden mb-6">
+              <div className="px-6 py-4 bg-primary-50 border-b border-primary-100 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-700">Action Items</p>
+                  <h3 className="text-lg font-bold text-gray-900 mt-1">What to do next</h3>
+                </div>
+                <span className="inline-flex items-center px-3 py-1 rounded-full bg-white border border-primary-200 text-xs font-semibold text-primary-700">
+                  {immediateActions.length} {immediateActions.length === 1 ? "action" : "actions"}
+                </span>
+              </div>
+              <ol className="divide-y divide-gray-100">
+                {immediateActions.map((action, i) => (
+                  <li key={`action-${i}`} className="px-6 py-4 flex gap-4">
+                    <span className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white text-sm font-bold">
+                      {i + 1}
+                    </span>
+                    <p className="text-sm text-gray-800 leading-relaxed pt-0.5">{action}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           {controlMap.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
               <div className="px-6 py-4 border-b border-gray-200">
@@ -918,19 +968,7 @@ export default function ContractsPage() {
                     </div>
                   ))}
                 </div>
-                {(immediateActions.length > 0) && (
-                  <div className="mt-5 pt-4 border-t border-gray-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Negotiation Sequence</p>
-                    <div className="space-y-2">
-                      {immediateActions.map((action, i) => (
-                        <div key={`${action}-${i}`} className="flex gap-3">
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary-50 text-primary-700 text-[11px] font-bold flex-shrink-0">{i + 1}</span>
-                          <p className="text-sm text-gray-700">{action}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* Action items moved to a prominent top-level panel above. */}
               </div>
             </div>
           </div>

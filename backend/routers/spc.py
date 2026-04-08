@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from services.spc_service import parse_spc, compare_spcs
+from services.usage_service import log_file_upload
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,21 @@ async def parse_spc_upload(file: UploadFile = File(None), body: SPCTextRequest =
 
     result = await parse_spc(text)
 
+    # Persist the original upload (raw bytes + extracted text) into the
+    # data collection layer so every plan document the user has ever fed
+    # the product is recoverable byte-for-byte.
+    if file is not None:
+        try:
+            log_file_upload(
+                upload_kind="plan_document",
+                filename=file.filename,
+                content_type=file.content_type,
+                file_bytes=contents,
+                extracted_text=text,
+            )
+        except Exception as e:
+            logger.debug(f"file_upload logging failed: {e}")
+
     return {
         "status": "success",
         "source": file.filename if file else "text_input",
@@ -165,6 +181,26 @@ async def compare_spc_uploads(
     logger.info(f"Comparing SPC documents, text_a={len(text_a)} chars, text_b={len(text_b)} chars")
 
     result = await compare_spcs(text_a, text_b)
+
+    # Persist BOTH plan documents for comparison runs.
+    if file_a is not None and file_b is not None:
+        try:
+            log_file_upload(
+                upload_kind="plan_document",
+                filename=file_a.filename,
+                content_type=file_a.content_type,
+                file_bytes=contents_a,
+                extracted_text=text_a,
+            )
+            log_file_upload(
+                upload_kind="plan_document",
+                filename=file_b.filename,
+                content_type=file_b.content_type,
+                file_bytes=contents_b,
+                extracted_text=text_b,
+            )
+        except Exception as e:
+            logger.debug(f"file_upload logging failed: {e}")
 
     return {
         "status": "success",

@@ -9,16 +9,34 @@ router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 @router.get("/deadlines")
 async def compliance_deadlines():
     """
-    Returns all regulatory deadlines with status (upcoming, imminent, overdue).
-    Includes DOL rule, HR 7148 delinking (2028), state-level bills.
-    Shows days until each deadline.
+    Returns all regulatory deadlines as rich, educational items.
+
+    Each deadline includes the statutory basis, what-it-is / why-it-matters
+    explanations, action items, and a `timing_phase` for grouping in the
+    UI. Contract-derived deadlines (renegotiation windows, audit response
+    windows) are pulled from contracts the user has actually uploaded.
+
+    The legacy `summary` block is preserved for backward compatibility,
+    using the new `timing_phase` values mapped to the older bucket names
+    so old clients keep working while new clients render the rich format.
     """
     deadlines = generate_compliance_deadlines()
 
-    overdue = [d for d in deadlines if d["status"] == "overdue"]
-    imminent = [d for d in deadlines if d["status"] == "imminent"]
-    upcoming = [d for d in deadlines if d["status"] == "upcoming"]
-    scheduled = [d for d in deadlines if d["status"] == "scheduled"]
+    # Legacy summary buckets — map the new neutral phase names to the
+    # old labels so the existing summary block keeps the same shape.
+    overdue = [d for d in deadlines if d.get("timing_phase") == "past"]
+    imminent = [
+        d for d in deadlines
+        if d.get("timing_phase") in ("today", "this_week", "this_month")
+    ]
+    upcoming = [
+        d for d in deadlines
+        if d.get("timing_phase") == "next_quarter"
+    ]
+    scheduled = [
+        d for d in deadlines
+        if d.get("timing_phase") in ("this_year", "future")
+    ]
 
     return {
         "status": "success",

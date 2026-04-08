@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import { useToast } from "@/components/Toast";
-import { Mail, Loader2, Copy, Download, Check, ClipboardList } from "lucide-react";
+import { Mail, Loader2, Copy, Download, Check, ClipboardList, FileText } from "lucide-react";
 
 const auditTypeDescriptions = {
   financial: "Verify numbers -- claims, rebates, spreads match contract terms",
@@ -14,6 +14,14 @@ interface AuditTypeInfo {
   audit_type: string;
   description: string;
   checklist: string[];
+}
+
+interface ContractListItem {
+  id: number;
+  filename: string;
+  analysis_date: string | null;
+  deal_score: number | null;
+  risk_level: string | null;
 }
 
 export default function AuditPage() {
@@ -32,6 +40,31 @@ export default function AuditPage() {
   const [auditTypeInfo, setAuditTypeInfo] = useState<AuditTypeInfo | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Contract picker state — populated by /api/contracts/list on mount.
+  // selectedContractId === null means "use the most recently uploaded
+  // contract" (the backend default). Any other value pins the audit
+  // letter to that specific persisted contract.
+  const [contracts, setContracts] = useState<ContractListItem[]>([]);
+  const [contractsLoading, setContractsLoading] = useState(true);
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchContracts = async () => {
+      try {
+        const res = await fetch("/api/contracts/list");
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: ContractListItem[] = Array.isArray(data?.contracts) ? data.contracts : [];
+        setContracts(list);
+      } catch {
+        /* picker is optional — silently leave the list empty */
+      } finally {
+        setContractsLoading(false);
+      }
+    };
+    fetchContracts();
+  }, []);
+
   const handleGenerate = async () => {
     setLoading(true);
     setLetter(null);
@@ -48,6 +81,10 @@ export default function AuditPage() {
           contract_date: form.contractDate,
           concerns: form.concerns,
           audit_type: auditType,
+          // Pin the letter to a specific uploaded contract if the user
+          // picked one, otherwise let the backend default to the most
+          // recent upload.
+          contract_id: selectedContractId,
         }),
       });
       if (!res.ok) {
@@ -124,6 +161,56 @@ export default function AuditPage() {
             Audit Details
           </h3>
           <div className="space-y-4">
+            {/* Contract picker — choose which uploaded contract to audit */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Contract to audit
+              </label>
+              {contractsLoading ? (
+                <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-500">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Loading uploaded contracts...
+                </div>
+              ) : contracts.length === 0 ? (
+                <div className="px-3 py-3 border border-amber-200 rounded-lg bg-amber-50">
+                  <p className="text-sm text-amber-900 font-medium">No analyzed contracts yet</p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    Upload a PBM contract on the Plan Intelligence page first. The audit
+                    letter will reference findings from that specific contract instead of
+                    making things up.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={selectedContractId === null ? "__latest__" : String(selectedContractId)}
+                    onChange={(e) =>
+                      setSelectedContractId(
+                        e.target.value === "__latest__" ? null : Number(e.target.value)
+                      )
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-600 focus:border-primary-600 outline-none bg-white"
+                  >
+                    <option value="__latest__">Most recently uploaded contract</option>
+                    {contracts.map((c) => {
+                      const dateStr = c.analysis_date ? c.analysis_date.split(" ")[0] : "unknown date";
+                      const score = c.deal_score !== null ? ` · score ${c.deal_score}/100` : "";
+                      const risk = c.risk_level ? ` · ${c.risk_level}` : "";
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.filename} ({dateStr}{score}{risk})
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
+                    <FileText className="w-3 h-3" />
+                    {contracts.length} contract{contracts.length === 1 ? "" : "s"} available. The letter will cite findings from the contract you pick.
+                  </p>
+                </>
+              )}
+            </div>
+
             {/* Audit Type Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

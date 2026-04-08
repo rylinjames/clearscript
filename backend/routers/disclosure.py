@@ -3,6 +3,7 @@
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from services.ai_service import analyze_disclosure
+from services.usage_service import log_file_upload
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,17 @@ async def analyze_disclosure_doc(file: UploadFile = File(...)):
             status_code=503,
             detail=f"AI disclosure analysis is currently unavailable: {e}",
         )
+
+    try:
+        log_file_upload(
+            upload_kind="disclosure",
+            filename=file.filename,
+            content_type=file.content_type,
+            file_bytes=content,
+            extracted_text=text,
+        )
+    except Exception as e:
+        logger.debug(f"file_upload logging failed: {e}")
 
     return {
         "status": "success",

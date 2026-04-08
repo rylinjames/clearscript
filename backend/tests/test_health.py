@@ -27,7 +27,30 @@ def test_openapi_docs_reachable(client):
     # Every critical MVP router must appear in the OpenAPI spec.
     paths = spec.get("paths", {})
     assert "/api/contracts/upload" in paths
+    assert "/api/contracts/list" in paths
     assert "/api/audit/generate" in paths
     assert "/api/compliance/deadlines" in paths
     assert "/api/claims/upload" in paths
     assert "/api/disclosure/analyze" in paths
+    assert "/api/feedback" in paths
+
+
+def test_feedback_submit_happy_path(client):
+    r = client.post(
+        "/api/feedback",
+        json={
+            "message": "The dashboard loaded slow but the analysis was great.",
+            "name": "Test User",
+            "email": "test@example.com",
+            "page": "/dashboard",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "success"
+    assert isinstance(body.get("id"), int)
+
+
+def test_feedback_rejects_empty_message(client):
+    r = client.post("/api/feedback", json={"message": "   "})
+    assert r.status_code == 400

@@ -130,20 +130,33 @@ def _isolated_db(tmp_path, monkeypatch):
     """
     Give every test its own empty SQLite file.
 
-    db_service.DB_PATH is a module-level Path hardcoded to
-    `backend/data/clearscript.db`. We have to patch the binding on the module
-    itself — the routers/services close over `_get_conn`, which reads
-    `DB_PATH` at call time, so patching the module attribute is enough.
+    Two things have to happen for this to work after the SQLite/Postgres
+    abstraction was added:
 
-    autouse=True because even tests that don't upload data (like
-    /api/dashboard/stats) end up reading from the DB and must see a clean
-    slate to stay deterministic.
+      1. Force the database backend to SQLite by clearing SUPABASE_DB_URL
+         from the env. Otherwise a developer with the env var set locally
+         (for debugging Postgres) would have their tests hit the real
+         Supabase database — disastrous.
+
+      2. Patch the SQLite path on `services.database` (and the legacy
+         `services.db_service.DB_PATH` re-export) to point at a temp
+         file unique to this test, so concurrent tests don't collide
+         and tests don't see each other's writes.
+
+    autouse=True because even tests that don't touch the DB end up
+    triggering startup code that reads from it.
     """
+    monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
+
+    import services.database as database
     import services.db_service as db_service
+
     test_db = tmp_path / "clearscript_test.db"
+    monkeypatch.setattr(database, "DB_PATH", test_db)
     monkeypatch.setattr(db_service, "DB_PATH", test_db)
-    # Create the schema on the isolated DB. Without this, routers that call
-    # save_contract_analysis / save_claims hit "no such table".
+
+    # Create the schema on the isolated DB. Without this, routers that
+    # call save_contract_analysis / save_claims hit "no such table".
     db_service._ensure_db()
     yield test_db
 

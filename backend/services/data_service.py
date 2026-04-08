@@ -408,99 +408,459 @@ def generate_network_analysis(zip_codes: List[str]) -> Dict[str, Any]:
 
 # ─── Compliance Deadlines ────────────────────────────────────────────────────────
 
-def generate_compliance_deadlines() -> List[Dict[str, Any]]:
-    today = datetime.now()
-    deadlines = [
+def _static_compliance_items() -> List[Dict[str, Any]]:
+    """
+    Static, statute-driven compliance items every self-insured employer
+    plan sponsor needs to track. Each item is structured for the
+    educational rendering on the frontend — `what_it_is`, `why_it_matters`,
+    `when_it_applies`, `who_acts`, `statutory_basis`, `action_items`,
+    `educational_summary`. The frontend renders these instead of a stress-
+    inducing "URGENT / DUE / UPCOMING" bucket label.
+    """
+    return [
         {
-            "id": "DOL-2025",
-            "name": "DOL Prescription Drug Cost Reporting Rule",
-            "description": "Requires group health plans and issuers to report prescription drug cost information to the Departments annually, including total spending, rebates received, and cost-sharing.",
-            "deadline": "2025-12-27",
-            "authority": "Department of Labor",
-            "regulation": "29 CFR 2520.101-2",
-            "category": "federal",
-            "action_required": "Submit annual Rx data report via DOL portal. Include total Rx spend, rebates, top 50 drugs by spend, and generic vs brand utilization.",
+            "id": "RXDC-ANNUAL",
+            "name": "RxDC Prescription Drug Data Collection",
+            "category": "Federal — Annual Filing",
+            "due_date": "2026-06-01",
+            "recurrence": "Annual, due by June 1 covering the prior calendar year",
+            "what_it_is": (
+                "An annual data submission to CMS describing the plan's "
+                "prescription drug spending, rebate revenue, top therapeutic "
+                "classes, and impact of rebates on premiums."
+            ),
+            "why_it_matters": (
+                "RxDC is the federal mechanism that surfaces PBM economics "
+                "to regulators. Missing or late filings expose the plan "
+                "fiduciary to ERISA penalties and forfeit visibility into "
+                "what the PBM is doing with the plan's money."
+            ),
+            "when_it_applies": (
+                "Every self-insured group health plan that covered employees "
+                "in the prior plan year. The PBM typically files on behalf "
+                "of the plan but the fiduciary obligation rests with the "
+                "employer."
+            ),
+            "who_acts": "Plan sponsor (with PBM as data source)",
+            "statutory_basis": "CAA 2021 Section 204 — 42 U.S.C. § 300gg-120",
+            "action_items": [
+                "Confirm with the PBM in writing that they will file RxDC files D1–D8 on the plan's behalf.",
+                "Request a copy of the plan-specific D1 and D2 files for the plan sponsor's records before submission.",
+                "Cross-check the rebate totals reported on D6 against the PBM's quarterly reconciliation reports.",
+                "Retain confirmation of submission for at least 7 years as part of ERISA recordkeeping.",
+            ],
+            "educational_summary": (
+                "RxDC is the single most important federal lever a plan "
+                "sponsor has for understanding what the PBM is actually "
+                "doing with rebates and pricing. The data flows to CMS but "
+                "the plan sponsor can request the same data files for its "
+                "own records — that is the entry point to a real audit."
+            ),
+            "contract_derived": False,
         },
         {
-            "id": "CAA-GSHP-2026",
-            "name": "CAA Gag Clause Prohibition Compliance Attestation",
-            "description": "Annual attestation that PBM contract does not contain gag clauses preventing disclosure of cost or quality information.",
-            "deadline": "2026-06-01",
-            "authority": "CMS / DOL / Treasury",
-            "regulation": "Consolidated Appropriations Act, 2021 - Section 201",
-            "category": "federal",
-            "action_required": "Submit attestation via CMS portal confirming no gag clauses in PBM contracts.",
+            "id": "GAG-ATTESTATION",
+            "name": "Gag Clause Prohibition Compliance Attestation",
+            "category": "Federal — Annual Filing",
+            "due_date": "2026-12-31",
+            "recurrence": "Annual, due by December 31 each year",
+            "what_it_is": (
+                "An annual attestation submitted to CMS confirming that the "
+                "plan's PBM and TPA contracts do not contain gag clauses "
+                "preventing disclosure of cost or quality information to "
+                "plan participants, plan fiduciaries, or referring providers."
+            ),
+            "why_it_matters": (
+                "Gag clauses are explicitly prohibited by the CAA. A plan "
+                "fiduciary that signs a PBM contract containing one — or "
+                "fails to attest annually — exposes the company and its "
+                "ERISA committee to direct fiduciary breach claims."
+            ),
+            "when_it_applies": (
+                "Every group health plan, self-insured or fully insured, "
+                "that contracts with a third-party administrator or PBM."
+            ),
+            "who_acts": "Plan sponsor (the named plan fiduciary signs)",
+            "statutory_basis": "CAA 2021 Section 201 — 42 U.S.C. § 300gg-120(a)",
+            "action_items": [
+                "Run the ClearScript contract analyzer over the active PBM agreement and check the 'Gag Clauses' finding.",
+                "If a clause that arguably restricts cost-data sharing exists, request a written amendment from the PBM removing it.",
+                "Have the plan fiduciary submit the attestation through the CMS Health Insurance Oversight System (HIOS).",
+                "Document the attestation with a board resolution or ERISA committee minute entry.",
+            ],
+            "educational_summary": (
+                "The gag clause attestation looks like a paperwork exercise "
+                "but it is the cleanest enforcement hook the federal "
+                "government has against PBMs. Filing it forces the plan "
+                "fiduciary to actually look at the contract."
+            ),
+            "contract_derived": False,
         },
         {
-            "id": "HR7148-2028",
+            "id": "DOL-TRANSPARENCY-RULE",
+            "name": "DOL Transparency Rule — PBM Disclosure & Audit Rights",
+            "category": "Federal — Standing Right",
+            "due_date": "2026-01-30",
+            "recurrence": "Standing right, effective January 30, 2026",
+            "what_it_is": (
+                "A final DOL rule under ERISA that grants self-insured "
+                "employer plan sponsors unrestricted audit rights over their "
+                "PBM, with a ten-business-day PBM response window once an "
+                "audit request is delivered."
+            ),
+            "why_it_matters": (
+                "Before this rule, PBMs could effectively block plan-sponsor "
+                "audits behind contractual scope limitations. The rule "
+                "removes that defense and creates a usable enforcement "
+                "deadline for the first time."
+            ),
+            "when_it_applies": (
+                "Any time the plan sponsor delivers a written audit request "
+                "to the PBM. The 10-business-day clock starts on receipt."
+            ),
+            "who_acts": "Plan sponsor initiates; PBM must respond",
+            "statutory_basis": "29 CFR 2520.101-2; ERISA § 404(a)(1)",
+            "action_items": [
+                "Use the ClearScript Audit Letter generator to draft a request citing the rule and the 10-day deadline.",
+                "Deliver the request by both certified mail and the PBM's contractually designated electronic method.",
+                "Calendar the 10-business-day deadline and document any failure to respond.",
+                "If the PBM fails to respond, escalate to ERISA counsel — the failure itself is a fiduciary breach indicator.",
+            ],
+            "educational_summary": (
+                "This rule is not a calendar deadline for the employer — "
+                "it is a calendar deadline for the PBM, triggered when the "
+                "employer sends an audit letter. It is the most powerful "
+                "tool a plan sponsor has gained in a decade."
+            ),
+            "contract_derived": False,
+        },
+        {
+            "id": "HR7148-DELINKING",
             "name": "HR 7148 — PBM Rebate Delinking Act",
-            "description": "Requires PBMs to delink compensation from drug list prices. Rebate passthrough to plan sponsors becomes mandatory. PBM spread pricing prohibited.",
-            "deadline": "2028-01-01",
-            "authority": "Congress (pending)",
-            "regulation": "HR 7148 (proposed)",
-            "category": "federal_pending",
-            "action_required": "Begin contract renegotiation. Ensure PBM contracts will comply with passthrough requirements and spread pricing bans by effective date.",
+            "category": "Federal — Future Effective Date",
+            "due_date": "2028-01-01",
+            "recurrence": "One-time effective date; Medicare Part D delinking begins 2028, commercial rolls in through 2029",
+            "what_it_is": (
+                "Federal legislation signed February 3, 2026 that requires "
+                "PBMs to delink their compensation from drug list prices, "
+                "mandates 100% rebate passthrough for Medicare Part D, and "
+                "extends 'any willing pharmacy' protections."
+            ),
+            "why_it_matters": (
+                "Every PBM contract executed before 2028 will need to be "
+                "renegotiated to comply. Plan sponsors that wait until the "
+                "effective date will be negotiating from weakness; sponsors "
+                "that prepare now can extract concessions in exchange for "
+                "early adoption."
+            ),
+            "when_it_applies": (
+                "Medicare Part D arrangements: January 1, 2028. Commercial "
+                "self-insured plan arrangements: phased through 2029 per "
+                "implementing regulations."
+            ),
+            "who_acts": "Plan sponsor must renegotiate; PBM must comply",
+            "statutory_basis": "HR 7148 (signed Feb 3, 2026), Pub. L. — pending implementing regs",
+            "action_items": [
+                "Inventory every active PBM contract and identify renewal dates between now and 2028.",
+                "For any contract that auto-renews past the effective date, calendar a renegotiation milestone at least 6 months prior.",
+                "Use the ClearScript contract analyzer to identify clauses that will be facially non-compliant with delinking and 100% passthrough.",
+                "Open a dialogue with your benefits broker about market alternatives in case the incumbent PBM cannot or will not comply.",
+            ],
+            "educational_summary": (
+                "HR 7148 is the single most consequential PBM legislation "
+                "in two decades. The 2028 effective date sounds far away "
+                "but the negotiation window is right now."
+            ),
+            "contract_derived": False,
         },
         {
-            "id": "IL-SB1239",
-            "name": "Illinois PBM Transparency Act",
-            "description": "Requires PBMs operating in Illinois to report aggregate rebate data and spread pricing amounts to the Department of Insurance annually.",
-            "deadline": "2026-03-31",
-            "authority": "Illinois Department of Insurance",
-            "regulation": "SB 1239",
-            "category": "state",
-            "action_required": "Ensure PBM provides required transparency data for Illinois-covered lives. File annual report.",
+            "id": "ERISA-5500-SCHED-A-C",
+            "name": "ERISA Form 5500 — Schedule A & Schedule C Filing",
+            "category": "Federal — Annual Filing",
+            "due_date": "2026-07-31",
+            "recurrence": "Annual, due 7 months after the plan year end (typically July 31 for calendar-year plans)",
+            "what_it_is": (
+                "The annual ERISA filing that documents service-provider "
+                "compensation. Schedule C in particular requires disclosure "
+                "of indirect compensation paid to PBMs, which includes "
+                "spread pricing and rebate retention amounts."
+            ),
+            "why_it_matters": (
+                "Inaccurate or incomplete Schedule C disclosures are a "
+                "common DOL enforcement target. A PBM that claims its "
+                "compensation is fully passthrough but actually retains "
+                "indirect compensation can expose the plan fiduciary to "
+                "personal liability."
+            ),
+            "when_it_applies": (
+                "Every employee benefit plan with 100+ participants files "
+                "annually. Smaller plans may qualify for Form 5500-SF."
+            ),
+            "who_acts": "Plan administrator (typically the employer)",
+            "statutory_basis": "ERISA § 103, 104; 29 CFR 2520.103-1",
+            "action_items": [
+                "Request a written 408(b)(2) disclosure from the PBM including all forms of indirect compensation.",
+                "Cross-check the PBM's stated indirect compensation against the rebate and spread findings from ClearScript.",
+                "File Form 5500 electronically through EFAST2 by the deadline.",
+                "Retain all underlying records for 7 years.",
+            ],
+            "educational_summary": (
+                "Schedule C is where the PBM's hidden compensation has to "
+                "show up on paper. If the numbers do not match the plan's "
+                "internal data, that is the clearest paper-trail signal "
+                "that something is wrong."
+            ),
+            "contract_derived": False,
         },
         {
-            "id": "NY-A7614",
-            "name": "New York PBM Regulation",
-            "description": "Mandates PBM registration and reporting of rebate pass-through rates, pharmacy reimbursement methods, and formulary change justifications.",
-            "deadline": "2026-07-01",
-            "authority": "NY Department of Financial Services",
-            "regulation": "A.7614 / S.6144",
-            "category": "state",
-            "action_required": "Verify PBM registration status. Request rebate transparency report for NY-covered lives.",
-        },
-        {
-            "id": "TX-SB622",
-            "name": "Texas PBM Audit Rights Act",
-            "description": "Grants plan sponsors enhanced audit rights over PBMs including access to pharmacy-level claims data and rebate contracts.",
-            "deadline": "2026-09-01",
-            "authority": "Texas Department of Insurance",
-            "regulation": "SB 622",
-            "category": "state",
-            "action_required": "Exercise expanded audit rights. Request pharmacy-level claims data from PBM.",
-        },
-        {
-            "id": "CA-AB1286",
-            "name": "California Prescription Drug Pricing Transparency",
-            "description": "Requires annual reporting of drug pricing data including wholesale acquisition costs, rebate amounts, and patient cost-sharing impact.",
-            "deadline": "2026-04-01",
-            "authority": "California OSHPD",
-            "regulation": "AB 1286",
-            "category": "state",
-            "action_required": "Compile and submit Rx pricing data for California-covered employees.",
+            "id": "MENTAL-HEALTH-PARITY-NQTL",
+            "name": "Mental Health Parity NQTL Comparative Analysis",
+            "category": "Federal — On-Demand Documentation",
+            "due_date": "2026-07-01",
+            "recurrence": "Documented before any non-quantitative treatment limitation is applied; produced on DOL request",
+            "what_it_is": (
+                "A written comparative analysis demonstrating that any "
+                "non-quantitative treatment limitations applied to mental "
+                "health and substance use disorder benefits are no more "
+                "stringent than those applied to medical/surgical benefits."
+            ),
+            "why_it_matters": (
+                "DOL has been actively requesting these analyses on audit. "
+                "Plans without one face penalties, and the PBM's prior auth "
+                "and step therapy programs are typically the source of "
+                "parity violations."
+            ),
+            "when_it_applies": (
+                "Continuous obligation. The DOL can request the analysis at "
+                "any time and a plan must produce it within 30 days."
+            ),
+            "who_acts": "Plan sponsor with PBM data",
+            "statutory_basis": "MHPAEA — 29 CFR 2590.712; CAA 2021 Section 203",
+            "action_items": [
+                "Request from the PBM a list of every NQTL applied to MH/SUD drugs (prior auth, step therapy, fail-first, refill limits).",
+                "Compare that list to NQTLs applied to medical/surgical drugs in the same therapeutic class.",
+                "Document the comparative analysis in writing using the DOL's six-step framework.",
+                "Update the analysis annually or whenever the formulary changes materially.",
+            ],
+            "educational_summary": (
+                "Parity is the most technically complex compliance "
+                "requirement plan sponsors face, and PBM-administered "
+                "programs are the most common source of violations."
+            ),
+            "contract_derived": False,
         },
     ]
 
-    for d in deadlines:
-        dl = datetime.strptime(d["deadline"], "%Y-%m-%d")
-        days_until = (dl - today).days
-        d["days_until"] = days_until
-        if days_until < 0:
-            d["status"] = "overdue"
-            d["urgency"] = "critical"
-        elif days_until <= 30:
-            d["status"] = "imminent"
-            d["urgency"] = "high"
-        elif days_until <= 90:
-            d["status"] = "upcoming"
-            d["urgency"] = "medium"
-        else:
-            d["status"] = "scheduled"
-            d["urgency"] = "low"
 
-    return sorted(deadlines, key=lambda x: x["days_until"])
+def _derive_contract_deadlines() -> List[Dict[str, Any]]:
+    """
+    Build compliance items derived from contracts the user has actually
+    uploaded — renewal-window milestones, audit-letter deadlines, and so on.
+
+    Returns an empty list if no contracts have been uploaded yet, so the
+    Compliance Tracker only shows information the user themselves provided
+    rather than guessing.
+    """
+    try:
+        from services.db_service import list_contract_analyses
+    except Exception:
+        return []
+
+    items: List[Dict[str, Any]] = []
+    contracts = list_contract_analyses(limit=20)
+
+    for c in contracts:
+        analysis_date_raw = c.get("analysis_date")
+        if not analysis_date_raw:
+            continue
+        try:
+            # SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" in UTC
+            analysis_dt = datetime.strptime(analysis_date_raw, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            try:
+                analysis_dt = datetime.fromisoformat(analysis_date_raw)
+            except (ValueError, TypeError):
+                continue
+
+        filename = c.get("filename") or "Uploaded contract"
+
+        # Item 1: 90-day check-in milestone — when the renegotiation window
+        # for an HR 7148 transition typically opens.
+        items.append({
+            "id": f"CONTRACT-{c['id']}-RENEG-WINDOW",
+            "name": f"Begin HR 7148 renegotiation review for {filename}",
+            "category": "Contract-Derived — Renegotiation Window",
+            "due_date": (analysis_dt + timedelta(days=90)).strftime("%Y-%m-%d"),
+            "recurrence": "One-time, 90 days after the contract was first analyzed",
+            "what_it_is": (
+                "A self-imposed milestone to revisit this contract 90 days "
+                "after the initial ClearScript analysis. By that point you "
+                "should have decided whether to renegotiate the highest-risk "
+                "provisions before the next renewal cycle."
+            ),
+            "why_it_matters": (
+                "The HR 7148 effective dates are fixed and the negotiation "
+                "leverage is highest when you raise concerns proactively, "
+                "not at the renewal table."
+            ),
+            "when_it_applies": (
+                "Once, 90 days after the first ClearScript analysis of this "
+                "specific PBM contract."
+            ),
+            "who_acts": "Plan sponsor (typically with broker or ERISA counsel)",
+            "statutory_basis": "Internal milestone driven by HR 7148 effective dates",
+            "action_items": [
+                "Review the deal score and top risks from the original ClearScript analysis.",
+                "Decide which 2–3 provisions warrant a written amendment request before the next renewal.",
+                "Send a formal redline request to the PBM citing the analysis findings.",
+                "Document the PBM's response (or non-response) in writing.",
+            ],
+            "educational_summary": (
+                "Contract analysis is only useful if it leads to action. "
+                "The 90-day window is when the recommendations from the "
+                "initial analysis are still fresh and the PBM still has "
+                "time to respond before the next renewal cycle."
+            ),
+            "contract_derived": True,
+            "source_contract_id": c.get("id"),
+            "source_contract_filename": filename,
+            "source_contract_analysis_date": analysis_date_raw,
+        })
+
+        # Item 2: Audit letter response deadline — if the user has already
+        # generated an audit letter, the 10-business-day clock from the new
+        # DOL transparency rule starts running. We don't know if they sent
+        # it, so we treat the analysis date as the proxy.
+        # 10 business days ≈ 14 calendar days
+        items.append({
+            "id": f"CONTRACT-{c['id']}-AUDIT-DEADLINE",
+            "name": f"PBM audit-response window for {filename}",
+            "category": "Contract-Derived — Audit Window",
+            "due_date": (analysis_dt + timedelta(days=14)).strftime("%Y-%m-%d"),
+            "recurrence": "One-time, 10 business days after an audit letter is sent",
+            "what_it_is": (
+                "Under the DOL transparency rule effective January 30, 2026, "
+                "a PBM must respond to a plan-sponsor audit request within "
+                "ten business days. This item tracks that response window "
+                "for the audit letter associated with this contract."
+            ),
+            "why_it_matters": (
+                "Failure to respond within the 10-business-day window is "
+                "itself evidence of fiduciary breach and gives the plan "
+                "sponsor strong grounds to escalate, terminate, or pursue "
+                "regulatory complaint."
+            ),
+            "when_it_applies": (
+                "Triggered when the plan sponsor delivers a written audit "
+                "request. The 14 calendar days approximates the 10 business "
+                "days the rule allows."
+            ),
+            "who_acts": "PBM must respond; plan sponsor enforces",
+            "statutory_basis": "29 CFR 2520.101-2 (DOL transparency rule)",
+            "action_items": [
+                "Confirm the audit letter was actually delivered (certified mail recommended).",
+                "Calendar the 10-business-day deadline.",
+                "Log every interim communication from the PBM during the window.",
+                "If the deadline passes without a complete response, escalate immediately to ERISA counsel.",
+            ],
+            "educational_summary": (
+                "The 10-day window is the most concrete enforcement hook "
+                "any plan sponsor has gained in years. The clock starts on "
+                "delivery — not on the date you want to start counting from."
+            ),
+            "contract_derived": True,
+            "source_contract_id": c.get("id"),
+            "source_contract_filename": filename,
+            "source_contract_analysis_date": analysis_date_raw,
+        })
+
+    return items
+
+
+def _annotate_deadline(d: Dict[str, Any], today: datetime) -> Dict[str, Any]:
+    """
+    Add days_until + a neutral, non-stress-inducing time framing.
+    Replaces the old "URGENT / DUE / UPCOMING" labels with plain English
+    that explains what the date means rather than shouting at the user.
+    """
+    try:
+        dl = datetime.strptime(d["due_date"], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        d["days_until"] = None
+        d["timing_label"] = "Date unavailable"
+        d["timing_phase"] = "unknown"
+        return d
+
+    days_until = (dl - today).days
+    d["days_until"] = days_until
+
+    # Neutral phase categories. The frontend uses these for grouping and
+    # color but the language never uses words like "urgent" or "overdue".
+    if days_until < 0:
+        d["timing_phase"] = "past"
+        if days_until == -1:
+            d["timing_label"] = "Was due yesterday — action still required"
+        else:
+            d["timing_label"] = f"Was due {abs(days_until)} days ago — action still required"
+    elif days_until == 0:
+        d["timing_phase"] = "today"
+        d["timing_label"] = "Due today"
+    elif days_until == 1:
+        d["timing_phase"] = "this_week"
+        d["timing_label"] = "Due tomorrow"
+    elif days_until <= 7:
+        d["timing_phase"] = "this_week"
+        d["timing_label"] = f"Due in {days_until} days (this week)"
+    elif days_until <= 30:
+        d["timing_phase"] = "this_month"
+        d["timing_label"] = f"Due in about {round(days_until / 7)} weeks"
+    elif days_until <= 90:
+        d["timing_phase"] = "next_quarter"
+        d["timing_label"] = f"Due in about {round(days_until / 30)} months (next quarter)"
+    elif days_until <= 365:
+        d["timing_phase"] = "this_year"
+        d["timing_label"] = f"Due in about {round(days_until / 30)} months"
+    else:
+        d["timing_phase"] = "future"
+        years = days_until / 365
+        if years < 1.5:
+            d["timing_label"] = "Due in about a year"
+        else:
+            d["timing_label"] = f"Due in about {round(years)} years"
+    return d
+
+
+def generate_compliance_deadlines() -> List[Dict[str, Any]]:
+    """
+    Build the compliance tracker payload.
+
+    Combines:
+      1. Static, statute-driven items every plan sponsor needs to track,
+         each annotated with rich educational metadata.
+      2. Contract-derived items pulled from the contracts the user has
+         actually uploaded — renegotiation windows, audit deadlines.
+
+    Sorted by `days_until` ascending so the soonest item is first, but
+    the frontend is free to render in calendar or list mode.
+    """
+    today = datetime.now()
+    items = _static_compliance_items() + _derive_contract_deadlines()
+    for item in items:
+        _annotate_deadline(item, today)
+
+    # Backward-compatible field aliases for older frontend code that still
+    # reads `deadline`, `description`, `regulation`, `action_required`.
+    for item in items:
+        item.setdefault("deadline", item.get("due_date"))
+        item.setdefault("description", item.get("what_it_is"))
+        item.setdefault("regulation", item.get("statutory_basis"))
+        item.setdefault("authority", item.get("who_acts"))
+        item.setdefault("action_required", "; ".join(item.get("action_items", [])))
+
+    return sorted(
+        items,
+        key=lambda x: (x.get("days_until") if x.get("days_until") is not None else 99999),
+    )
 
 # ─── Spread Analysis ─────────────────────────────────────────────────────────────
 

@@ -40,6 +40,7 @@ from routers import (
     provider_anomaly,
     copay_accumulator,
     cms_data,
+    feedback,
 )
 
 app = FastAPI(
@@ -93,6 +94,7 @@ app.include_router(prior_auth.router)
 app.include_router(provider_anomaly.router)
 app.include_router(copay_accumulator.router)
 app.include_router(cms_data.router)
+app.include_router(feedback.router)
 
 
 @app.get("/")

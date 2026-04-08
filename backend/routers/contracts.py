@@ -8,7 +8,8 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import Response
 from services.pipeline_service import run_contract_pipeline, get_pipeline_status
 from services.audit_rights_service import score_audit_rights
-from services.db_service import save_contract_analysis
+from services.db_service import save_contract_analysis, list_contract_analyses, load_contract_analysis_by_id
+from services.usage_service import log_file_upload, log_event
 from services.spc_service import parse_spc
 from services.plan_crossref_service import cross_reference_contract_and_plan
 from services.pdf_report_service import generate_contract_report
@@ -91,10 +92,26 @@ async def upload_contract(file: UploadFile = File(...)):
 
     # Persist to SQLite
     risk_score = result.get("overall_risk_score", 0) if isinstance(result, dict) else 0
+    contract_row_id: int | None = None
     try:
-        save_contract_analysis(file.filename, result, risk_score, audit_benchmark.get("score", 0))
+        contract_row_id = save_contract_analysis(file.filename, result, risk_score, audit_benchmark.get("score", 0))
     except Exception as e:
         logger.warning(f"Failed to persist contract analysis: {e}")
+
+    # Persist the original upload (raw bytes + extracted text) for the
+    # data collection layer. Linked to the contract_analyses row via
+    # related_id so usage queries can join the two.
+    try:
+        log_file_upload(
+            upload_kind="pbm_contract",
+            filename=file.filename,
+            content_type=file.content_type,
+            file_bytes=content,
+            extracted_text=text,
+            related_id=contract_row_id,
+        )
+    except Exception as e:
+        logger.debug(f"file_upload logging failed: {e}")
 
     return {
         "status": "success",
@@ -237,6 +254,21 @@ async def export_pdf(request: dict):
     )
 
     safe_name = filename.replace(" ", "_").replace(".pdf", "").replace(".txt", "").replace(".docx", "")
+
+    try:
+        log_event(
+            event_type="pdf_exported",
+            payload={
+                "filename": filename,
+                "byte_size": len(pdf_bytes),
+                "has_plan_benefits": bool(request.get("plan_benefits")),
+                "has_cross_reference": bool(request.get("cross_reference")),
+                "has_audit_letter": bool(request.get("audit_letter")),
+            },
+        )
+    except Exception as e:
+        logger.debug(f"pdf_exported event logging failed: {e}")
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -288,4 +320,30 @@ async def training_stats():
 async def pipeline_status():
     """Check if RocketRide pipeline engine is available."""
     return await get_pipeline_status()
+
+
+@router.get("/list")
+async def list_contracts():
+    """
+    Return every persisted contract analysis as a lightweight summary,
+    most recent first. Used by the audit-letter contract picker so the
+    user can choose which uploaded contract to draft an audit letter for.
+
+    Each item carries:
+      - id, filename, analysis_date (UTC ISO timestamp)
+      - deal_score (0-100, derived from the persisted analysis)
+      - risk_level ("low" | "moderate" | "high")
+      - risk_score, audit_rights_score
+    """
+    items = list_contract_analyses(limit=100)
+    return {"status": "success", "count": len(items), "contracts": items}
+
+
+@router.get("/{contract_id}")
+async def get_contract(contract_id: int):
+    """Fetch one persisted contract analysis by id."""
+    item = load_contract_analysis_by_id(contract_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"No contract analysis with id={contract_id}")
+    return {"status": "success", "contract": item}
 

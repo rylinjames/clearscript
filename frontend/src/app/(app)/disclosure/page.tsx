@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
 import DataSourceBanner from "@/components/DataSourceBanner";
@@ -123,15 +123,11 @@ export default function DisclosurePage() {
   const [showSource, setShowSource] = useState(false);
   const [sourceText, setSourceText] = useState<string | null>(null);
 
-  const hasAutoLoaded = useRef(false);
-
-  useEffect(() => {
-    if (!hasAutoLoaded.current) {
-      hasAutoLoaded.current = true;
-      handleSampleDisclosure();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Note: we deliberately do NOT auto-run the sample analysis on mount.
+  // It used to fire `handleSampleDisclosure()` from a useEffect, which sent
+  // the sample text to gpt-5.4-mini on every page visit and made the page
+  // appear to hang for 30-60 seconds before the user could interact with it.
+  // The "Load sample" button below now requires an explicit click.
 
   const runAnalysis = async (file: File) => {
     const formData = new FormData();

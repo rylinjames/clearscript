@@ -13,9 +13,13 @@ import json
 import asyncio
 import logging
 import threading
+import time
+import inspect
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
+
+from services.usage_service import log_ai_call
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +44,41 @@ def _get_client():
                 logger.info("OpenAI client initialized")
     return _client
 
+def _infer_operation_name() -> str:
+    """
+    Walk the call stack to find the public function that triggered this
+    AI call (e.g. analyze_contract, generate_audit_letter, parse_spc).
+    Used to label the row in ai_calls so usage queries can be split by
+    feature without manual tagging at every call site.
+    """
+    try:
+        for frame_info in inspect.stack()[1:8]:
+            name = frame_info.function
+            if name.startswith("_") or name in ("_generate", "_call", "wrapper"):
+                continue
+            if name in (
+                "analyze_contract",
+                "analyze_disclosure",
+                "generate_audit_letter",
+                "analyze_report",
+                "parse_spc",
+                "compare_spcs",
+                "cross_reference_contract_and_plan",
+            ):
+                return name
+        return "ai_generate"
+    except Exception:
+        return "ai_generate"
+
+
 async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 16000) -> str:
     """
     Run OpenAI generation in a thread to keep it async-compatible.
+
+    Every call is logged to the ai_calls table via usage_service. The
+    log captures: operation name, model, full prompts, full response,
+    token counts, latency, cost estimate, and any error. This is the
+    raw data the product analytics layer reads from.
 
     Notes on the gpt-5 family:
       * It rejects the legacy `max_tokens` parameter — use
@@ -60,7 +96,16 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 1600
     have to change.
     """
     client = _get_client()
+    operation = _infer_operation_name()
+    started = time.perf_counter()
+    response_text: str | None = None
+    prompt_tokens = 0
+    completion_tokens = 0
+    error_str: str | None = None
+    request_id: str | None = None
+
     def _call():
+        nonlocal prompt_tokens, completion_tokens, request_id
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
@@ -70,14 +115,23 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 1600
             response_format={"type": "json_object"},
             max_completion_tokens=max_tokens,
         )
+        # Capture token usage + the OpenAI request id for cost analytics
+        # and reproduction. Tolerate missing fields on older SDKs.
+        try:
+            usage = response.usage
+            if usage is not None:
+                prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        except Exception:
+            pass
+        try:
+            request_id = getattr(response, "id", None)
+        except Exception:
+            request_id = None
+
         text = response.choices[0].message.content
         finish_reason = response.choices[0].finish_reason
         if not text:
-            # gpt-5 reasoning models return empty content when the
-            # max_completion_tokens budget is consumed entirely by
-            # internal reasoning. Surface that as a real error instead
-            # of letting json.loads("") raise a confusing "Expecting
-            # value: line 1 column 1" downstream.
             raise RuntimeError(
                 f"OpenAI returned empty content (finish_reason={finish_reason}). "
                 f"This usually means max_completion_tokens={max_tokens} was "
@@ -89,12 +143,34 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 1600
             if text.endswith("```"):
                 text = text[:-3].strip()
         return text
+
     try:
-        # gpt-5 reasoning runs are slower than legacy chat models, so
-        # the 30s timeout that worked for gpt-4o-mini is too tight.
-        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=120.0)
-    except asyncio.TimeoutError:
-        raise TimeoutError("OpenAI API call timed out after 120 seconds")
+        response_text = await asyncio.wait_for(asyncio.to_thread(_call), timeout=120.0)
+        return response_text
+    except asyncio.TimeoutError as e:
+        error_str = "timeout after 120 seconds"
+        raise TimeoutError("OpenAI API call timed out after 120 seconds") from e
+    except Exception as e:
+        error_str = f"{type(e).__name__}: {e}"
+        raise
+    finally:
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        try:
+            log_ai_call(
+                operation=operation,
+                model=MODEL,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                response_text=response_text,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                error=error_str,
+                request_id=request_id,
+            )
+        except Exception as log_err:
+            # Logging must never break the request path.
+            logger.debug(f"AI call logging failed: {log_err}")
 
 # ─── Contract Analysis ──────────────────────────────────────────────────────────
 
@@ -993,10 +1069,21 @@ AUDIT_LETTER_SYSTEM_PROMPT = """You are a benefits attorney drafting a formal au
 
 Generate a professional audit request letter that:
 1. Cites specific DOL rule provisions and ERISA fiduciary obligations
-2. References specific findings from the contract analysis
+2. References findings from the contract analysis ONLY when they are present in the input — never invent or fabricate findings
 3. Specifies exact data the employer is legally entitled to receive
 4. Includes a 10-business-day response deadline
 5. Notes that failure to comply may constitute a fiduciary breach
+
+ABSOLUTE RULES — DO NOT VIOLATE THESE:
+
+- DO NOT invent or fabricate any specific dollar amounts, percentages, spread figures, rebate amounts, reconciliation totals, claim counts, drug names, NDC codes, pharmacy NPIs, or any numeric figure that is not literally present in the inputs.
+- DO NOT pretend to have findings the inputs do not contain. If the input has no analyzed_contract, do NOT claim "your contract specifies X percent rebate passthrough" or similar — instead REQUEST that information.
+- DO NOT claim a reconciliation has been performed if no claims data is present in the inputs. If `_data_provenance.has_real_claims_data` is false, the letter must REQUEST claims data, not assert findings about it.
+- DO NOT include placeholder numbers like "$X", "[amount]", or fabricated "industry averages" presented as the employer's actual figures.
+- If the inputs say a category has no data, write that section as a forward-looking REQUEST ("we are requesting documentation of...") rather than as a backward-looking ASSERTION ("your records show...").
+- The `_data_provenance` field in the input tells you what is grounded in real data. Honor it.
+
+When in doubt, write the letter generically. A letter that requests data is professionally appropriate. A letter that fabricates findings is malpractice.
 
 Return JSON with:
 {
