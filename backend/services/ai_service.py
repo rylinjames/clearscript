@@ -45,6 +45,70 @@ def _get_client():
                 logger.info("OpenAI client initialized")
     return _client
 
+def _extract_first_json_object(text: str) -> str:
+    """
+    Pull the first complete JSON object out of a model response and return
+    it as a clean string ready for json.loads(). Robust to:
+
+      - leading whitespace
+      - leading non-JSON preamble (e.g. "Here is the analysis:" before {)
+      - trailing content after the closing brace (extra commentary, a
+        second JSON object, or a stray newline followed by anything)
+      - markdown fences (already stripped earlier in _generate but
+        belt-and-suspenders here too)
+
+    The error this fixes was:
+        Extra data: line 2 column 1 (char 52)
+    which Python's json.loads raises when the response is something like:
+        {"deal_score": 5, ...}
+        {"some_other_object": ...}
+    json.loads parses the first object, then refuses to silently drop
+    the trailing content. raw_decode is the canonical Python way to
+    parse one JSON value and tell us where it ended, so we can
+    deliberately ignore everything after.
+
+    Raises ValueError if no JSON object is present at all — the caller
+    surfaces that as a 503 with a clear message.
+    """
+    text = text.strip()
+    if not text:
+        raise ValueError("Empty response — nothing to parse as JSON")
+
+    # Strip a stray code fence if one slipped through (the main strip is
+    # in _generate, but raw model output sometimes wraps JSON in ```json…```
+    # with trailing whitespace that the simpler strip in _generate misses).
+    if text.startswith("```"):
+        text = text[3:]
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.lstrip("\n").rstrip()
+        if text.endswith("```"):
+            text = text[:-3].rstrip()
+
+    # Find the first opening brace — anything before it is preamble we
+    # silently drop. This handles "Here is your analysis:\n\n{...}".
+    first_brace = text.find("{")
+    if first_brace == -1:
+        raise ValueError(
+            f"No JSON object found in response (got {len(text)} chars, starts with {text[:60]!r})"
+        )
+
+    decoder = json.JSONDecoder()
+    try:
+        obj, _end = decoder.raw_decode(text[first_brace:])
+    except json.JSONDecodeError as e:
+        # Re-raise with a snippet of the offending response so we can
+        # actually debug it from the error message in production logs.
+        snippet = text[first_brace : first_brace + 200]
+        raise ValueError(
+            f"Could not parse JSON object from model response: {e}. "
+            f"First 200 chars after the opening brace: {snippet!r}"
+        ) from e
+
+    # Re-serialize to canonical form so downstream json.loads is trivial.
+    return json.dumps(obj)
+
+
 def _infer_operation_name() -> str:
     """
     Walk the call stack to find the public function that triggered this
@@ -143,7 +207,12 @@ async def _generate(system_prompt: str, user_prompt: str, max_tokens: int = 1600
             text = text.split("\n", 1)[-1]
             if text.endswith("```"):
                 text = text[:-3].strip()
-        return text
+        # Make the response robust to "valid JSON + trailing content" or
+        # leading preamble — gpt-5 reasoning models occasionally violate
+        # response_format=json_object by appending stray newlines or a
+        # second object. _extract_first_json_object isolates the first
+        # complete JSON object so downstream json.loads always succeeds.
+        return _extract_first_json_object(text)
 
     try:
         response_text = await asyncio.wait_for(asyncio.to_thread(_call), timeout=120.0)
