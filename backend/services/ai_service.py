@@ -392,6 +392,15 @@ Return valid JSON with this structure:
     "Expand audit rights to manufacturer contracts, network agreements, and specialty economics"
   ],
   "audit_implication": "state explicitly what the plan sponsor cannot verify under the current audit language",
+  "contract_identification": {
+    "plan_sponsor_name": "exact name of the employer / plan sponsor as written in the contract preamble",
+    "pbm_name": "exact name of the PBM as written in the contract preamble",
+    "effective_date": "ISO date YYYY-MM-DD if found in the contract — null if not stated",
+    "initial_term_months": 36,
+    "current_term_end_date": "ISO date YYYY-MM-DD when the current term expires — null if uncomputable",
+    "termination_notice_days": 180,
+    "renewal_mechanism": "one-line description of how the contract renews (e.g. 'Auto-renewal for successive 1-year terms unless either party gives 180 days written notice')"
+  },
   "overall_risk_score": 78,
   "summary": "overall assessment"
 }
@@ -771,6 +780,92 @@ def _control_map_for(analysis: dict) -> list[dict]:
     ]
 
 
+def _attach_critical_dates(analysis: dict) -> None:
+    """
+    Compute notice deadline + days-until counters from the AI-extracted
+    contract_identification block.
+
+    The AI extracts the raw fields (effective_date, initial_term_months,
+    current_term_end_date, termination_notice_days). This helper turns
+    them into the dates a benefits manager actually needs:
+
+      - notice_deadline_date: latest date you can give written notice
+        without paying the early-termination fee
+        (= current_term_end_date - termination_notice_days)
+
+      - days_until_term_end: how many days until the current term
+        expires
+
+      - days_until_notice_deadline: how many days until the notice
+        deadline (negative = the deadline has passed)
+
+      - rfp_start_recommended_date: 60 days before notice deadline,
+        which is roughly the time a sponsor needs to RFP alternatives
+        and have credible negotiating leverage at the table
+
+    The fields are merged back into analysis["contract_identification"]
+    so the frontend can render them without doing any date math.
+
+    Best-effort: if any field is missing or unparseable the function
+    leaves the existing fields untouched. Failures never raise.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+
+    cid = analysis.get("contract_identification")
+    if not isinstance(cid, dict):
+        return
+
+    today = _dt.now().date()
+
+    def _parse_date(value):
+        if not value:
+            return None
+        try:
+            # Accept ISO YYYY-MM-DD; tolerant of "YYYY-MM-DDTHH:MM:SS" too
+            return _dt.fromisoformat(str(value).split("T")[0]).date()
+        except (ValueError, TypeError):
+            return None
+
+    effective = _parse_date(cid.get("effective_date"))
+    term_end = _parse_date(cid.get("current_term_end_date"))
+
+    # Derive current_term_end if the AI didn't supply it but we have
+    # effective_date + initial_term_months.
+    if term_end is None and effective is not None:
+        try:
+            months = int(cid.get("initial_term_months") or 0)
+            if months > 0:
+                # Naive month math: add months × 30.4375 days. Good enough
+                # for "deadline is roughly Y months from now" — we're not
+                # computing leap years here.
+                term_end = effective + _td(days=int(round(months * 30.4375)))
+                cid["current_term_end_date"] = term_end.isoformat()
+        except (ValueError, TypeError):
+            pass
+
+    if term_end is None:
+        return
+
+    # Notice deadline = term end - termination notice days
+    try:
+        notice_days = int(cid.get("termination_notice_days") or 0)
+    except (ValueError, TypeError):
+        notice_days = 0
+
+    if notice_days > 0:
+        notice_deadline = term_end - _td(days=notice_days)
+        cid["notice_deadline_date"] = notice_deadline.isoformat()
+        cid["days_until_notice_deadline"] = (notice_deadline - today).days
+        # Recommend starting an RFP 60 days before the notice deadline
+        # so the sponsor has alternatives lined up before they have to
+        # commit to giving notice.
+        rfp_start = notice_deadline - _td(days=60)
+        cid["rfp_start_recommended_date"] = rfp_start.isoformat()
+        cid["days_until_rfp_start"] = (rfp_start - today).days
+
+    cid["days_until_term_end"] = (term_end - today).days
+
+
 def _attach_dollar_exposure(analysis: dict) -> None:
     """
     Mutate `analysis["financial_exposure"]` to include dollar-denominated
@@ -1147,6 +1242,12 @@ def enrich_contract_analysis(analysis: dict) -> dict:
     # number a benefits manager actually cares about — the percentage
     # is meaningless without a denominator.
     _attach_dollar_exposure(analysis)
+
+    # Compute the notice deadline + days-until counters from the AI's
+    # contract_identification block. After this runs, the frontend has
+    # everything it needs to render the Contract Identification card and
+    # the Critical Dates card without doing any date math itself.
+    _attach_critical_dates(analysis)
 
     # Always merge the AI's control_map with the deterministic 5-lever
     # baseline. The AI sometimes returns only 2-3 levers; the merged

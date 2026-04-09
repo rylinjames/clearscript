@@ -123,6 +123,22 @@ interface TopRisk {
   recommendation: string;
 }
 
+interface ContractIdentification {
+  plan_sponsor_name?: string | null;
+  pbm_name?: string | null;
+  effective_date?: string | null;
+  initial_term_months?: number | null;
+  current_term_end_date?: string | null;
+  termination_notice_days?: number | null;
+  renewal_mechanism?: string | null;
+  // Computed by the backend's _attach_critical_dates helper:
+  notice_deadline_date?: string | null;
+  days_until_term_end?: number | null;
+  days_until_notice_deadline?: number | null;
+  rfp_start_recommended_date?: string | null;
+  days_until_rfp_start?: number | null;
+}
+
 interface FinancialExposureEntry {
   level: string;
   estimate: string;
@@ -163,6 +179,35 @@ function formatUsdShort(n: number | undefined | null): string {
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 1_000) return `$${Math.round(n / 1_000)}k`;
   return `$${Math.round(n)}`;
+}
+
+// Render an ISO YYYY-MM-DD date as "January 1, 2024" for the
+// Contract Identification card. Returns "—" for null/undefined/garbage.
+function formatLongDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso + "T00:00:00");
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+// Render "in 267 days" / "267 days from today" / "21 days ago" as
+// neutral plain English so a benefits manager can scan the date
+// without doing math. Used by the Critical Dates card.
+function formatRelativeDays(days: number | null | undefined): string {
+  if (days == null || !isFinite(days)) return "";
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days === -1) return "yesterday";
+  if (days > 0) return `${days} days from today`;
+  return `${Math.abs(days)} days ago`;
 }
 
 interface ControlMapItem {
@@ -716,6 +761,7 @@ export default function ContractsPage() {
   const controlMap = ((rawContractAnalysis?.control_map as ControlMapItem[] | undefined) || []).slice(0, 5);
   const controlPosture = (rawContractAnalysis?.control_posture as ControlPosture | undefined) || undefined;
   const structuralRiskOverride = (rawContractAnalysis?.structural_risk_override as StructuralRiskOverride | undefined) || undefined;
+  const contractIdentification = (rawContractAnalysis?.contract_identification as ContractIdentification | undefined) || undefined;
   // Show every benchmark observation the model produced, sorted by tier
   // (Tier 1 economics first) then severity (high before medium/low),
   // with a dedup pass that drops duplicate (category, tier) cards.
@@ -867,9 +913,6 @@ export default function ContractsPage() {
                 <h2 className="text-2xl font-bold text-gray-900 leading-tight">
                   {dealDiagnosis || "PBM contract analysis complete"}
                 </h2>
-                <p className="text-sm text-gray-500 mt-2">
-                  Lead with the economics and control terms first. Detailed clause extraction and audit support remain below as supporting evidence.
-                </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 {contractRowId !== null && (
@@ -897,6 +940,117 @@ export default function ContractsPage() {
             </div>
           </div>
 
+          {/* ═══ Contract Identification + Critical Dates ═══
+              The Contract Identification card answers "WHICH contract did
+              we just analyze" — parties, effective date, term length. The
+              Critical Dates card answers "WHEN do I need to act" — current
+              term end, notice deadline, RFP start recommendation. Both
+              are populated by the AI's contract_identification block plus
+              the backend _attach_critical_dates helper. They render only
+              if at least one identification field is present, so old
+              analyses without the new prompt block degrade gracefully.
+          */}
+          {contractIdentification && (contractIdentification.plan_sponsor_name || contractIdentification.pbm_name || contractIdentification.effective_date) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              {/* Contract Identification */}
+              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 mb-3">Contract Identification</p>
+                <div className="space-y-2.5">
+                  {(contractIdentification.plan_sponsor_name || contractIdentification.pbm_name) && (
+                    <div>
+                      <p className="text-base font-bold text-gray-900 leading-snug">
+                        {contractIdentification.pbm_name || "PBM"}
+                        <span className="text-gray-400 mx-2 font-normal">×</span>
+                        {contractIdentification.plan_sponsor_name || "Plan Sponsor"}
+                      </p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    {contractIdentification.effective_date && (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Effective</p>
+                        <p className="font-medium text-gray-900">{formatLongDate(contractIdentification.effective_date)}</p>
+                      </div>
+                    )}
+                    {contractIdentification.initial_term_months != null && (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Initial Term</p>
+                        <p className="font-medium text-gray-900">{contractIdentification.initial_term_months} months</p>
+                      </div>
+                    )}
+                    {contractIdentification.current_term_end_date && (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Current Term Ends</p>
+                        <p className="font-medium text-gray-900">{formatLongDate(contractIdentification.current_term_end_date)}</p>
+                      </div>
+                    )}
+                    {contractIdentification.termination_notice_days != null && (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Notice Required</p>
+                        <p className="font-medium text-gray-900">{contractIdentification.termination_notice_days} days</p>
+                      </div>
+                    )}
+                  </div>
+                  {contractIdentification.renewal_mechanism && (
+                    <p className="text-xs text-gray-500 leading-relaxed pt-1">
+                      {contractIdentification.renewal_mechanism}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Critical Dates */}
+              {(contractIdentification.notice_deadline_date || contractIdentification.days_until_term_end != null) && (
+                <div className="bg-gradient-to-br from-amber-50 to-white rounded-xl border border-amber-200 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700 mb-3">Critical Dates</p>
+                  <div className="space-y-3">
+                    {contractIdentification.notice_deadline_date && (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider text-amber-700">Notice Deadline</p>
+                        <p className="text-lg font-bold text-gray-900">
+                          {formatLongDate(contractIdentification.notice_deadline_date)}
+                        </p>
+                        {contractIdentification.days_until_notice_deadline != null && (
+                          <p className={`text-xs mt-0.5 ${
+                            contractIdentification.days_until_notice_deadline < 0
+                              ? "text-red-700 font-semibold"
+                              : contractIdentification.days_until_notice_deadline < 90
+                              ? "text-red-700 font-semibold"
+                              : "text-gray-600"
+                          }`}>
+                            {contractIdentification.days_until_notice_deadline < 0
+                              ? `Deadline passed ${Math.abs(contractIdentification.days_until_notice_deadline)} days ago — early termination fee likely applies`
+                              : `${formatRelativeDays(contractIdentification.days_until_notice_deadline)} to give notice without penalty`}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {contractIdentification.rfp_start_recommended_date && contractIdentification.days_until_rfp_start != null && (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider text-amber-700">Begin RFP Process By</p>
+                        <p className="text-base font-semibold text-gray-900">
+                          {formatLongDate(contractIdentification.rfp_start_recommended_date)}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-0.5">
+                          {contractIdentification.days_until_rfp_start < 0
+                            ? "Recommended start date passed — begin immediately"
+                            : `${formatRelativeDays(contractIdentification.days_until_rfp_start)} — gives you negotiating leverage at the renewal table`}
+                        </p>
+                      </div>
+                    )}
+                    {contractIdentification.current_term_end_date && contractIdentification.days_until_term_end != null && (
+                      <div className="pt-2 border-t border-amber-100">
+                        <p className="text-xs text-gray-500">
+                          Current term ends in {contractIdentification.days_until_term_end > 0 ? `${contractIdentification.days_until_term_end} days` : `${Math.abs(contractIdentification.days_until_term_end)} days ago`}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
             <div className={`rounded-xl border p-5 ${riskLevelStyles(weightedAssessment?.risk_level)}`}>
               <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">PBM Deal Score</p>
@@ -917,10 +1071,23 @@ export default function ContractsPage() {
                 {structuralRiskOverride?.rationale || "No structural override was required."}
               </p>
             </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Benchmark Observations</p>
-              <p className="text-3xl font-bold text-gray-900">{benchmarkObservations.length || topRisks.length || complianceCount!.critical}</p>
-              <p className="text-sm text-gray-600 mt-1">Observations tie contract language to a benchmark and recommendation.</p>
+            <div className={`rounded-xl border p-5 ${
+              complianceCount!.good === 0 && complianceCount!.critical > 0
+                ? "bg-red-50 border-red-200 text-red-700"
+                : complianceCount!.good > complianceCount!.critical
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                : "bg-amber-50 border-amber-200 text-amber-700"
+            }`}>
+              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">Clause Balance</p>
+              <p className="text-3xl font-bold">
+                {complianceCount!.good}
+                <span className="text-base font-normal opacity-70 ml-1">of {complianceCount!.good + complianceCount!.warning + complianceCount!.critical}</span>
+              </p>
+              <p className="text-sm mt-1">
+                {complianceCount!.good === 0
+                  ? "No clauses favor the employer. All extracted terms are PBM-favorable or neutral."
+                  : `${complianceCount!.good} clause${complianceCount!.good === 1 ? "" : "s"} favor the employer; ${complianceCount!.critical} favor the PBM.`}
+              </p>
             </div>
           </div>
 
@@ -1053,25 +1220,20 @@ export default function ContractsPage() {
             </div>
 
             <div className="space-y-6">
-              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Risk Framing</h3>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Structural View</p>
-                    <p className="text-sm text-gray-700 mt-1">{structuralRiskOverride?.rationale || "Weighted scoring is active without a structural override."}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Control View</p>
-                    <p className="text-sm text-gray-700 mt-1">{controlPosture?.headline || "Control posture will appear after contract analysis."}</p>
-                  </div>
-                  {auditImplication && (
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Audit Interpretation</p>
-                      <p className="text-sm text-gray-700 mt-1">{auditImplication}</p>
-                    </div>
-                  )}
+              {/* Audit Interpretation pulled out of the old "Risk Framing"
+                  card. The previous card had three sub-blocks (Structural
+                  View, Control View, Audit Interpretation) — the first
+                  two were verbatim duplicates of the Structural Risk
+                  metric card and the Control Posture metric card, and
+                  added nothing. Audit Interpretation is the only one
+                  with new information and is genuinely one of the
+                  strongest single sentences in the entire output. */}
+              {auditImplication && (
+                <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700 mb-2">Audit Interpretation</p>
+                  <p className="text-sm text-blue-900 leading-relaxed">{auditImplication}</p>
                 </div>
-              </div>
+              )}
 
               <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Weighted Tier Scores</h3>
@@ -1191,20 +1353,10 @@ export default function ContractsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-emerald-700">{complianceCount!.good}</p>
-              <p className="text-sm text-emerald-600">Employer-Favorable Clauses</p>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-amber-700">{complianceCount!.warning}</p>
-              <p className="text-sm text-amber-600">Neutral Clauses</p>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-red-700">{complianceCount!.critical}</p>
-              <p className="text-sm text-red-600">PBM-Favorable Clauses</p>
-            </div>
-          </div>
+          {/* Clause counts moved up to the metric cards row above as
+              the "Clause Balance" card. The redundant 3-card breakdown
+              that used to live here was buried below the fold and
+              showed the same info as the new top-of-page summary. */}
 
           <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
             <table className="w-full">
@@ -1290,41 +1442,19 @@ export default function ContractsPage() {
             </div>
           )}
 
-          {/* Eligible Rebate Definition Alert */}
-          {rebateDefinition && rebateDefinition.narrow_definition_flag && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-6">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-sm font-bold text-red-800 mb-1">
-                    Narrow Rebate Definition Detected
-                  </h3>
-                  {rebateDefinition.details && (
-                    <p className="text-sm text-red-700 mb-3">{rebateDefinition.details}</p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    {rebateDefinition.excludes_admin_fees && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Excludes admin fees
-                      </span>
-                    )}
-                    {rebateDefinition.excludes_volume_bonuses && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Excludes volume bonuses
-                      </span>
-                    )}
-                    {rebateDefinition.excludes_price_protection && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Excludes price protection
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* "Narrow Rebate Definition Detected" callout deleted.
+              The same finding was already rendered in three other
+              places: (1) the deduplicated Tier 1 Rebates observation
+              card, (2) the Rebate Passthrough row of the extracted
+              terms table, and (3) the Economic Linkages section.
+              Showing it a fourth time here was the redundancy that
+              signaled "AI slop" to skeptical readers. */}
 
-          {/* Dispute Resolution & Statistical Extrapolation */}
+          {/* Dispute Resolution & Statistical Extrapolation
+              Each card now has a "Why it matters" line so a benefits
+              manager who has never heard of statistical extrapolation
+              understands the consequence — these used to render as
+              trivia cards with no actionable framing. */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             {/* Dispute Resolution */}
             {disputeResolution && (
@@ -1342,7 +1472,7 @@ export default function ContractsPage() {
                   <p className="text-sm opacity-80">{disputeResolution.details}</p>
                 )}
                 {disputeResolution.risk_level && (
-                  <div className="mt-2">
+                  <div className="mt-2 mb-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
                       disputeResolution.risk_level === "high"
                         ? "bg-red-200 text-red-800"
@@ -1354,6 +1484,12 @@ export default function ContractsPage() {
                     </span>
                   </div>
                 )}
+                <div className="mt-3 pt-3 border-t border-current/10">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70 mb-1">Why it matters</p>
+                  <p className="text-xs opacity-90 leading-relaxed">
+                    Without binding arbitration or an external escalation path, the PBM has no enforceable accountability for unaddressed audit findings. They can refuse to fix issues and the only remedy is litigation — slow, expensive, and rarely pursued by plan sponsors.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -1383,6 +1519,12 @@ export default function ContractsPage() {
                 {statisticalExtrapolation.details && (
                   <p className="text-sm opacity-80">{statisticalExtrapolation.details}</p>
                 )}
+                <div className="mt-3 pt-3 border-t border-current/10">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70 mb-1">Why it matters</p>
+                  <p className="text-xs opacity-90 leading-relaxed">
+                    Without this right, an auditor can only recover errors found in the specific claims they sampled — not project a known error rate across the full population. On a typical pharmacy audit that leaves an estimated 80% or more of overcharges uncollected.
+                  </p>
+                </div>
               </div>
             )}
           </div>
