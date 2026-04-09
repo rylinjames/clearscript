@@ -1120,6 +1120,55 @@ def get_claims_status() -> Dict[str, Any]:
         **_custom_claims_info,
     }
 
+
+def get_claims_totals() -> Dict[str, Any]:
+    """
+    Compute spend subtotals across the currently-loaded claims dataset.
+
+    Used by `enrich_contract_analysis` to convert percentage-based
+    leakage estimates from the AI ("3-6% of brand spend") into real
+    dollar figures the user can act on. If no real claims have been
+    uploaded yet, the function still returns subtotals from the
+    synthetic dataset, but flags `custom_data_loaded=False` so the
+    caller can label the dollar figures as illustrative rather than
+    based on the user's actual data.
+
+    Returns a dict with the four subtotals the leakage model needs:
+      - total_plan_paid: sum of plan_paid across all claims (denominator
+        for "% of total claims spend" estimates)
+      - brand_spend: plan_paid for non-generic claims (denominator for
+        "% of brand drug spend" estimates)
+      - generic_spend: plan_paid for generic claims
+      - specialty_spend: plan_paid where channel == "specialty"
+        (denominator for "% of specialty Rx spend" estimates)
+    """
+    global _custom_claims_loaded
+    claims = get_claims()
+    total_plan_paid = 0.0
+    brand_spend = 0.0
+    generic_spend = 0.0
+    specialty_spend = 0.0
+    for c in claims:
+        try:
+            paid = float(c.get("plan_paid", 0) or 0)
+        except (TypeError, ValueError):
+            paid = 0.0
+        total_plan_paid += paid
+        if c.get("generic"):
+            generic_spend += paid
+        else:
+            brand_spend += paid
+        if (c.get("channel") or "").lower() == "specialty":
+            specialty_spend += paid
+    return {
+        "custom_data_loaded": _custom_claims_loaded,
+        "claims_count": len(claims),
+        "total_plan_paid": round(total_plan_paid, 2),
+        "brand_spend": round(brand_spend, 2),
+        "generic_spend": round(generic_spend, 2),
+        "specialty_spend": round(specialty_spend, 2),
+    }
+
 def get_drugs() -> List[Dict[str, Any]]:
     return DRUGS
 

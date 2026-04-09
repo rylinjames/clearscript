@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
 import StatusBadge from "@/components/StatusBadge";
 import DataSourceBanner from "@/components/DataSourceBanner";
+import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 import {
   FileText,
   Loader2,
@@ -22,6 +24,9 @@ import {
   CheckCircle2,
   XCircle as XCircleIcon,
   Download,
+  Mail,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface ExtractedTerm {
@@ -122,6 +127,15 @@ interface FinancialExposureEntry {
   level: string;
   estimate: string;
   driver: string;
+  // Dollar-denominated estimates added by the backend's
+  // _attach_dollar_exposure helper. Present whenever the backend has
+  // either real uploaded claims or the synthetic sample dataset to
+  // multiply the percentage range against.
+  dollar_estimate_low?: number;
+  dollar_estimate_high?: number;
+  dollar_denominator?: number;
+  dollar_denominator_label?: string;
+  dollar_estimate_basis?: "uploaded_claims" | "synthetic_sample";
 }
 
 interface FinancialExposure {
@@ -135,7 +149,20 @@ interface FinancialExposure {
     claims_filename?: string;
     date_range_start?: string;
     date_range_end?: string;
+    custom_data_loaded?: boolean;
+    total_plan_paid?: number;
+    brand_spend?: number;
+    specialty_spend?: number;
   };
+}
+
+// Format a dollar amount as "$420k" for >$1k or "$420" for less.
+// Used by the dollar-denominated leakage display.
+function formatUsdShort(n: number | undefined | null): string {
+  if (n == null || !isFinite(n)) return "—";
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  return `$${Math.round(n)}`;
 }
 
 interface ControlMapItem {
@@ -305,20 +332,39 @@ By: ___________________________
 Name: Sarah M. Chen
 Title: Executive Director`;
 
+// Allow-list of contract clause keys that get rendered as rows in the
+// extracted terms table. Anything not in this list is treated as
+// post-processing metadata (control_map, top_risks, immediate_actions,
+// benchmark_observations, weighted_assessment, redline_suggestions,
+// financial_exposure, structural_risk_override, control_posture, etc.)
+// and rendered by its own dedicated section elsewhere on the page.
+//
+// audit_rights is intentionally excluded — it has the eleven-point
+// dedicated audit-rights scorecard rendered below (auditChecklist).
+//
+// IMPORTANT: this list must be a whitelist, not a blacklist. The
+// previous implementation looped over every key in the analysis JSON
+// and skipped a hardcoded blacklist; every time enrich_contract_analysis
+// or the AI prompt added a new top-level field, that field would show
+// up as a phantom "Not found" row in the table. Whitelist iteration
+// is future-proof against that whole class of bug.
+const CLAUSE_LABELS: Record<string, string> = {
+  rebate_passthrough: "Rebate Passthrough",
+  spread_pricing: "Spread Pricing",
+  formulary_clauses: "Formulary Management",
+  mac_pricing: "MAC Pricing",
+  termination_provisions: "Termination Provisions",
+  gag_clauses: "Gag Clauses",
+  specialty_channel: "Specialty Channel Control",
+};
+
 function mapApiToTerms(a: Record<string, Record<string, unknown>>): ExtractedTerm[] {
-  const labels: Record<string, string> = {
-    rebate_passthrough: "Rebate Passthrough",
-    spread_pricing: "Spread Pricing",
-    formulary_clauses: "Formulary Management",
-    audit_rights: "Audit Rights",
-    mac_pricing: "MAC Pricing",
-    termination_provisions: "Termination Provisions",
-    gag_clauses: "Gag Clauses",
-    specialty_channel: "Specialty Channel Control",
-  };
   const terms: ExtractedTerm[] = [];
-  for (const [key, val] of Object.entries(a)) {
-    if (!val || typeof val !== "object" || key === "compliance_flags" || key === "overall_risk_score" || key === "summary" || key === "audit_rights" || key === "eligible_rebate_definition" || key === "dispute_resolution" || key === "statistical_extrapolation" || key === "statistical_extrapolation_rights" || key === "linked_findings" || key === "economic_linkages" || key === "specialty_channel") continue;
+  // Iterate the whitelist, not the analysis object — guarantees we
+  // only ever try to render real contract clauses.
+  for (const key of Object.keys(CLAUSE_LABELS)) {
+    const val = a[key];
+    if (!val || typeof val !== "object") continue;
     // Use favorability from AI if available, fall back to heuristic
     const favorability = (val.favorability as string) || "";
     let status: "good" | "warning" | "critical";
@@ -336,13 +382,13 @@ function mapApiToTerms(a: Record<string, Record<string, unknown>>): ExtractedTer
     }
     const extractedValue = (val.percentage || val.effective_passthrough || val.caps || (val.change_notification_days ? val.change_notification_days + " days" : null) || val.scope || val.notice_period || (val.notice_days ? val.notice_days + " days" : null) || val.mechanism || (val.found ? "Found" : "Not found")) as string;
     terms.push({
-      clause: labels[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      clause: CLAUSE_LABELS[key],
       value: extractedValue,
       status,
       note: (val.details as string) || "",
     });
   }
-  return terms.length > 0 ? terms : [];
+  return terms;
 }
 
 function riskLevelStyles(level?: string) {
@@ -395,6 +441,27 @@ export default function ContractsPage() {
   // PDF export state
   const [exporting, setExporting] = useState(false);
   const [contractFilename, setContractFilename] = useState<string>("contract");
+  // SQLite/Postgres primary key for the most recently uploaded contract,
+  // returned by /api/contracts/upload. Used to deep-link the audit-letter
+  // generator at /audit?contract_id={id} so the user can draft a letter
+  // against this exact contract instead of re-picking it from a dropdown.
+  const [contractRowId, setContractRowId] = useState<number | null>(null);
+  // Index of the redline whose suggested language was just copied to the
+  // clipboard, so we can show a "Copied" success state for ~1.5 seconds.
+  // null means nothing was copied recently.
+  const [copiedRedline, setCopiedRedline] = useState<number | null>(null);
+
+  const copyRedline = async (idx: number, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedRedline(idx);
+      window.setTimeout(() => setCopiedRedline((prev) => (prev === idx ? null : prev)), 1500);
+    } catch {
+      // If clipboard write fails (rare — usually a permissions issue
+      // in an iframe or insecure context), do nothing. The button just
+      // doesn't show the success state.
+    }
+  };
 
   const loadExtras = (a: AnalysisExtras) => {
     if (a.audit_rights?.checklist) {
@@ -414,6 +481,14 @@ export default function ContractsPage() {
   };
 
   const processResponse = (data: Record<string, unknown>) => {
+    // Capture the contract row id (returned by /api/contracts/upload)
+    // so the "Draft Audit Letter" button can deep-link to the audit
+    // page with this specific contract preselected.
+    if (typeof data?.id === "number") {
+      setContractRowId(data.id as number);
+    } else {
+      setContractRowId(null);
+    }
     const a = data?.analysis as AnalysisExtras | undefined;
     if (a && a.rebate_passthrough) {
       setTerms(mapApiToTerms(a as Record<string, Record<string, unknown>>));
@@ -641,7 +716,21 @@ export default function ContractsPage() {
   const controlMap = ((rawContractAnalysis?.control_map as ControlMapItem[] | undefined) || []).slice(0, 5);
   const controlPosture = (rawContractAnalysis?.control_posture as ControlPosture | undefined) || undefined;
   const structuralRiskOverride = (rawContractAnalysis?.structural_risk_override as StructuralRiskOverride | undefined) || undefined;
-  const benchmarkObservations = ((rawContractAnalysis?.benchmark_observations as BenchmarkObservation[] | undefined) || []).slice(0, 4);
+  // Show every benchmark observation the model produced, sorted by tier
+  // (Tier 1 economics first) then severity (high before medium/low). The
+  // previous .slice(0, 4) was truncating Tier 2 observations off the end
+  // of the array, leaving the user with a "Tier 2: 89% risk" score in
+  // the weighted scores card and zero explanation of what was in Tier 2.
+  const SEVERITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const benchmarkObservations = (
+    (rawContractAnalysis?.benchmark_observations as BenchmarkObservation[] | undefined) || []
+  )
+    .slice() // copy before sort to avoid mutating the source
+    .sort((a, b) => {
+      const tierDiff = (a.tier ?? 99) - (b.tier ?? 99);
+      if (tierDiff !== 0) return tierDiff;
+      return (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9);
+    });
   // All immediate actions from the contract analysis. Used to be sliced to
   // 3 and tucked into a sidebar subhead — now rendered as a top-level panel
   // right under the deal-score metric cards so it's the second thing the
@@ -735,10 +824,11 @@ export default function ContractsPage() {
       )}
 
       {loading && (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
-          <p className="text-sm text-gray-500">Analyzing contract terms...</p>
-        </div>
+        <AIAnalysisProgress
+          variant="contract"
+          filename={contractFilename}
+          estimatedSeconds={30}
+        />
       )}
 
       {error && (
@@ -760,18 +850,29 @@ export default function ContractsPage() {
                   Lead with the economics and control terms first. Detailed clause extraction and audit support remain below as supporting evidence.
                 </p>
               </div>
-              <button
-                onClick={handleExportPDF}
-                disabled={exporting || !rawContractAnalysis}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {exporting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Download className="w-4 h-4" />
+              <div className="flex flex-col sm:flex-row gap-2">
+                {contractRowId !== null && (
+                  <Link
+                    href={`/audit?contract_id=${contractRowId}`}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-primary-600 text-primary-600 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors"
+                  >
+                    <Mail className="w-4 h-4" />
+                    Draft Audit Letter
+                  </Link>
                 )}
-                {exporting ? "Generating PDF..." : "Export PDF Report"}
-              </button>
+                <button
+                  onClick={handleExportPDF}
+                  disabled={exporting || !rawContractAnalysis}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {exporting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  {exporting ? "Generating PDF..." : "Export PDF Report"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -978,11 +1079,16 @@ export default function ContractsPage() {
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Supporting Leakage Estimates</h3>
                 {financialExposure.summary && <p className="text-sm text-gray-500 mt-1">{financialExposure.summary}</p>}
-                {financialExposure.mode === "claims_backed" && financialExposure.claims_context?.claims_count && (
+                {financialExposure.mode === "claims_backed" && financialExposure.claims_context?.custom_data_loaded && financialExposure.claims_context?.claims_count != null && (
                   <p className="text-xs text-emerald-700 mt-2">
                     Based on {financialExposure.claims_context.claims_count.toLocaleString()} uploaded claims
                     {financialExposure.claims_context.claims_filename ? ` from ${financialExposure.claims_context.claims_filename}` : ""}
                     {financialExposure.claims_context.date_range_start && financialExposure.claims_context.date_range_end ? ` (${financialExposure.claims_context.date_range_start} to ${financialExposure.claims_context.date_range_end})` : ""}.
+                  </p>
+                )}
+                {(!financialExposure.claims_context?.custom_data_loaded) && (
+                  <p className="text-xs text-amber-700 mt-2">
+                    Dollar figures below are illustrative — based on a sample claims dataset. Upload your real claims on the Claims page to recompute against your actual spend.
                   </p>
                 )}
               </div>
@@ -999,7 +1105,19 @@ export default function ContractsPage() {
                         {item.level.toUpperCase()}
                       </span>
                     </div>
-                    <p className="text-lg font-bold text-gray-900">{item.estimate}</p>
+                    {item.dollar_estimate_low != null && item.dollar_estimate_high != null ? (
+                      <>
+                        <p className="text-2xl font-bold text-gray-900">
+                          {formatUsdShort(item.dollar_estimate_low)}
+                          <span className="text-gray-400 mx-1">–</span>
+                          {formatUsdShort(item.dollar_estimate_high)}
+                          <span className="text-sm font-normal text-gray-500"> /yr</span>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">{item.estimate}</p>
+                      </>
+                    ) : (
+                      <p className="text-lg font-bold text-gray-900">{item.estimate}</p>
+                    )}
                     <p className="text-sm text-gray-600 mt-2">{item.driver}</p>
                   </div>
                 ) : null)}
@@ -1254,7 +1372,27 @@ export default function ContractsPage() {
 
                     {/* Suggested language */}
                     <div className="mb-3">
-                      <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider mb-1">Suggested Language (Add)</p>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Suggested Language (Add)</p>
+                        <button
+                          type="button"
+                          onClick={() => copyRedline(i, redline.suggested_language)}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 px-2 py-0.5 rounded hover:bg-emerald-100 transition-colors"
+                          aria-label="Copy suggested language to clipboard"
+                        >
+                          {copiedRedline === i ? (
+                            <>
+                              <Check className="w-3 h-3" />
+                              Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
                       <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-3">
                         <p className="text-sm text-emerald-800 leading-relaxed font-medium">{redline.suggested_language}</p>
                       </div>
@@ -1293,9 +1431,8 @@ export default function ContractsPage() {
           </div>
 
           {planLoading && (
-            <div className="bg-white rounded-xl border border-gray-200 p-12 flex flex-col items-center gap-3 mb-6">
-              <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
-              <p className="text-sm text-gray-500">Extracting plan document benefits...</p>
+            <div className="mb-6">
+              <AIAnalysisProgress variant="plan_doc" estimatedSeconds={32} />
             </div>
           )}
 

@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { usePageTitle } from "@/components/PageTitle";
 import { useToast } from "@/components/Toast";
 import { Mail, Loader2, Copy, Download, Check, ClipboardList, FileText } from "lucide-react";
+import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 
 const auditTypeDescriptions = {
   financial: "Verify numbers -- claims, rebates, spreads match contract terms",
@@ -27,6 +29,17 @@ interface ContractListItem {
 export default function AuditPage() {
   usePageTitle("Audit Generator");
   const { toast } = useToast();
+  // The Plan Intelligence "Draft Audit Letter" button deep-links here
+  // with ?contract_id={id} so the picker can be pre-pinned to that
+  // exact uploaded contract instead of forcing the user to re-find it.
+  const searchParams = useSearchParams();
+  const deepLinkContractId = (() => {
+    const raw = searchParams.get("contract_id");
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
+
   const [form, setForm] = useState({
     employerName: "",
     pbmName: "",
@@ -46,7 +59,7 @@ export default function AuditPage() {
   // letter to that specific persisted contract.
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
-  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(deepLinkContractId);
 
   useEffect(() => {
     const fetchContracts = async () => {
@@ -56,6 +69,12 @@ export default function AuditPage() {
         const data = await res.json();
         const list: ContractListItem[] = Array.isArray(data?.contracts) ? data.contracts : [];
         setContracts(list);
+        // If the URL deep-link contract id matches one in the picker,
+        // honor it. If it doesn't (the contract was deleted or the
+        // deep-link is stale), silently fall back to "most recent".
+        if (deepLinkContractId !== null && list.some((c) => c.id === deepLinkContractId)) {
+          setSelectedContractId(deepLinkContractId);
+        }
       } catch {
         /* picker is optional — silently leave the list empty */
       } finally {
@@ -63,7 +82,7 @@ export default function AuditPage() {
       }
     };
     fetchContracts();
-  }, []);
+  }, [deepLinkContractId]);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -389,10 +408,11 @@ export default function AuditPage() {
               )}
             </div>
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <Loader2 className="w-6 h-6 text-primary-600 animate-spin" />
-                <p className="text-xs text-gray-400">Generating letter...</p>
-              </div>
+              <AIAnalysisProgress
+                variant="audit_letter"
+                filename={form.pbmName ? `${form.pbmName} audit letter` : null}
+                estimatedSeconds={28}
+              />
             ) : error ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <p className="text-sm font-semibold text-amber-900">Audit letter generation failed</p>

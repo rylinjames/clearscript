@@ -15,6 +15,7 @@ import {
   GitCompare,
   ShieldCheck,
 } from "lucide-react";
+import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 
 interface BenefitDetail {
   label: string;
@@ -114,13 +115,13 @@ export default function SPCPage() {
           Upload SBC/SPD Document
         </h3>
         <FileUpload onFileSelect={handleFileUpload} accept=".pdf" label="Upload SBC, SPD, or EOC document" />
-        {parsing && (
-          <div className="flex items-center justify-center gap-2 mt-4">
-            <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
-            <span className="text-sm text-gray-500">Parsing document...</span>
-          </div>
-        )}
       </div>
+
+      {parsing && (
+        <div className="mt-6">
+          <AIAnalysisProgress variant="plan_doc" estimatedSeconds={32} />
+        </div>
+      )}
 
       {data && (
         <>
@@ -193,13 +194,13 @@ export default function SPCPage() {
               Compare with Another SPC
             </h3>
             <FileUpload onFileSelect={handleCompareUpload} accept=".pdf" label="Upload second SBC/SPD for comparison" />
-            {comparing && (
-              <div className="flex items-center justify-center gap-2 mt-4">
-                <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
-                <span className="text-sm text-gray-500">Comparing documents...</span>
-              </div>
-            )}
           </div>
+
+          {comparing && (
+            <div className="mt-6">
+              <AIAnalysisProgress variant="cross_reference" estimatedSeconds={38} />
+            </div>
+          )}
 
           {comparison && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden">

@@ -9,6 +9,7 @@ or canned data.
 """
 
 import os
+import re
 import json
 import asyncio
 import logging
@@ -701,6 +702,103 @@ def _control_map_for(analysis: dict) -> list[dict]:
     ]
 
 
+def _attach_dollar_exposure(analysis: dict) -> None:
+    """
+    Mutate `analysis["financial_exposure"]` to include dollar-denominated
+    estimates derived from real or synthetic claims totals.
+
+    Each leakage entry (rebate_leakage, spread_exposure, specialty_control)
+    has an `estimate` string like "3-6% of brand spend" that we parse for
+    a percentage range and a denominator keyword. We multiply both ends of
+    the range by the matching subtotal from `get_claims_totals()` to
+    produce a `dollar_estimate_low` / `dollar_estimate_high` pair.
+
+    The function is best-effort: if parsing fails for any entry the
+    string estimate is left untouched. Failures never raise.
+    """
+    try:
+        from services.data_service import get_claims_totals
+    except Exception:
+        return
+
+    exposure = analysis.get("financial_exposure")
+    if not isinstance(exposure, dict):
+        return
+
+    try:
+        totals = get_claims_totals()
+    except Exception as e:
+        logger.debug(f"get_claims_totals failed in _attach_dollar_exposure: {e}")
+        return
+
+    custom_data = bool(totals.get("custom_data_loaded"))
+    denominators = {
+        "brand": float(totals.get("brand_spend") or 0),
+        "specialty": float(totals.get("specialty_spend") or 0),
+        "total": float(totals.get("total_plan_paid") or 0),
+        "generic": float(totals.get("generic_spend") or 0),
+    }
+
+    # Annotate exposure with claims context the frontend can render
+    # ("Based on 1,247 uploaded claims" vs "Illustrative — based on
+    # synthetic sample data").
+    exposure.setdefault("claims_context", {})
+    if isinstance(exposure["claims_context"], dict):
+        exposure["claims_context"]["custom_data_loaded"] = custom_data
+        exposure["claims_context"]["claims_count"] = totals.get("claims_count")
+        exposure["claims_context"]["total_plan_paid"] = totals.get("total_plan_paid")
+        exposure["claims_context"]["brand_spend"] = totals.get("brand_spend")
+        exposure["claims_context"]["specialty_spend"] = totals.get("specialty_spend")
+    if custom_data:
+        exposure["mode"] = "claims_backed"
+    else:
+        exposure.setdefault("mode", "illustrative")
+
+    pct_range_pat = re.compile(r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*%")
+    single_pct_pat = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+
+    def _denominator_for(estimate_text: str) -> tuple[float, str]:
+        text = (estimate_text or "").lower()
+        if "brand" in text:
+            return denominators["brand"], "brand drug spend"
+        if "specialty" in text:
+            return denominators["specialty"], "specialty Rx spend"
+        if "generic" in text:
+            return denominators["generic"], "generic drug spend"
+        # default: total claims spend
+        return denominators["total"], "total claims spend"
+
+    for key in ("rebate_leakage", "spread_exposure", "specialty_control"):
+        entry = exposure.get(key)
+        if not isinstance(entry, dict):
+            continue
+        estimate_text = str(entry.get("estimate") or "")
+        if not estimate_text:
+            continue
+
+        denom, denom_label = _denominator_for(estimate_text)
+        if denom <= 0:
+            continue
+
+        m = pct_range_pat.search(estimate_text)
+        if m:
+            low_pct = float(m.group(1)) / 100.0
+            high_pct = float(m.group(2)) / 100.0
+        else:
+            m2 = single_pct_pat.search(estimate_text)
+            if not m2:
+                continue
+            low_pct = high_pct = float(m2.group(1)) / 100.0
+
+        low_dollars = round(denom * low_pct, 2)
+        high_dollars = round(denom * high_pct, 2)
+        entry["dollar_estimate_low"] = low_dollars
+        entry["dollar_estimate_high"] = high_dollars
+        entry["dollar_denominator"] = round(denom, 2)
+        entry["dollar_denominator_label"] = denom_label
+        entry["dollar_estimate_basis"] = "uploaded_claims" if custom_data else "synthetic_sample"
+
+
 def _control_posture_for(analysis: dict) -> dict:
     control_map = analysis.get("control_map")
     if not isinstance(control_map, list) or not control_map:
@@ -943,6 +1041,12 @@ def enrich_contract_analysis(analysis: dict) -> dict:
     claims_backed_exposure = _claims_backed_exposure_for(analysis)
     if claims_backed_exposure:
         analysis["financial_exposure"] = claims_backed_exposure
+    # Convert percentage-range estimates ("3-6% of brand spend") into
+    # real dollar figures using the user's actual claims if uploaded,
+    # falling back to the synthetic dataset otherwise. This is the only
+    # number a benefits manager actually cares about — the percentage
+    # is meaningless without a denominator.
+    _attach_dollar_exposure(analysis)
 
     if not analysis.get("control_map"):
         analysis["control_map"] = _control_map_for(analysis)

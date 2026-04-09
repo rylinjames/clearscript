@@ -115,6 +115,11 @@ async def upload_contract(file: UploadFile = File(...)):
 
     return {
         "status": "success",
+        # SQLite/Postgres primary key for this contract analysis. The
+        # frontend uses it to deep-link the audit letter generator at
+        # /audit?contract_id={id} so the user can draft a letter
+        # against this exact contract instead of re-picking it.
+        "id": contract_row_id,
         "filename": file.filename,
         "file_size": len(content),
         "extracted_text_length": len(text),

@@ -6,6 +6,7 @@ import FileUpload from "@/components/FileUpload";
 import DataSourceBanner from "@/components/DataSourceBanner";
 import ScoreCircle from "@/components/ScoreCircle";
 import { Search, Loader2, Sparkles, Check, X, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 
 interface ChecklistItem {
   item: string;
@@ -263,10 +264,10 @@ export default function DisclosurePage() {
       )}
 
       {loading && (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
-          <p className="text-sm text-gray-500">Evaluating disclosure completeness...</p>
-        </div>
+        <AIAnalysisProgress
+          variant="disclosure"
+          estimatedSeconds={28}
+        />
       )}
 
       {error && (
