@@ -869,19 +869,35 @@ def _attach_dollar_exposure(analysis: dict) -> None:
 
 
 def _control_posture_for(analysis: dict) -> dict:
+    # Always start from the deterministic 5-lever baseline. This guarantees
+    # the Control Map has rows for Rebates, Pricing, Specialty, Formulary,
+    # and Audit / Data even when the AI returns a partial control_map of
+    # only 2-3 entries (which it has been doing intermittently). The
+    # previous version skipped the deterministic map whenever the AI's
+    # version was non-empty, producing a 2-lever map that was both
+    # incomplete and contradicted the rest of the analysis.
     control_map = analysis.get("control_map")
     if not isinstance(control_map, list) or not control_map:
         control_map = _control_map_for(analysis)
+        analysis["control_map"] = control_map
 
     pbm_controlled = [item for item in control_map if str(item.get("controller", "")).lower() == "pbm"]
     shared = [item for item in control_map if str(item.get("controller", "")).lower() == "shared"]
     total = len(control_map) or 1
 
-    if len(pbm_controlled) >= 4:
+    # Use the RATIO of PBM-controlled levers, not the absolute count.
+    # The previous bucketing (`>= 4` PBM → controlled, `>= 2` → mixed)
+    # produced the bug where a 2-of-2 control map (100% PBM) was
+    # labeled "Mixed control" because 2 < 4. A 100% PBM-controlled
+    # map should always say "PBM-controlled" no matter how many
+    # levers are in it.
+    pbm_ratio = len(pbm_controlled) / total
+
+    if pbm_ratio >= 0.8:
         label = "PBM-controlled"
         level = "high"
         summary = "PBM controls most of the economic and governance levers, so leakage estimates should be read as consequences of structural control rather than isolated clause defects."
-    elif len(pbm_controlled) >= 2:
+    elif pbm_ratio >= 0.4:
         label = "Mixed control"
         level = "moderate"
         summary = "Control is split, but the PBM still holds enough leverage to influence pricing, rebates, or specialty economics without full employer verification."
@@ -981,6 +997,15 @@ def _supporting_detail_for_observation(key: str, analysis: dict) -> str | None:
 def _derive_benchmark_observations(analysis: dict) -> list[dict]:
     ordered = _ordered_term_scores(analysis)
     observations = []
+    # Dedup by (category, tier). Two contract terms with the same category
+    # and tier (e.g. rebate_passthrough + eligible_rebate_definition both
+    # being "Rebates / Tier 1") used to produce two separate observation
+    # cards saying basically the same thing, with the same supporting
+    # leakage estimate, the same implication, and nearly identical
+    # recommendations. That looked like AI slop. We now keep only the
+    # highest-penalty term per (category, tier) slot — _ordered_term_scores
+    # returns terms in descending penalty order, so first-seen wins.
+    seen_slots: set[tuple[str, int]] = set()
 
     for item in ordered:
         key = item["key"]
@@ -990,6 +1015,10 @@ def _derive_benchmark_observations(analysis: dict) -> list[dict]:
         benchmark = BENCHMARK_LIBRARY.get(key)
         if not benchmark:
             continue
+        slot = (benchmark["category"], item["tier"])
+        if slot in seen_slots:
+            continue
+        seen_slots.add(slot)
         term = item["term"]
         observations.append({
             "kind": "consideration",
@@ -1005,7 +1034,9 @@ def _derive_benchmark_observations(analysis: dict) -> list[dict]:
             "recommendation": _derive_top_risks({key: term})[0]["recommendation"] if _derive_top_risks({key: term}) else "Renegotiate this term.",
             "supporting_detail": _supporting_detail_for_observation(key, analysis),
         })
-        if len([obs for obs in observations if obs["kind"] == "consideration"]) >= 3:
+        # Cap at 6 considerations so the page stays readable. Each
+        # (category, tier) slot can contribute at most one observation.
+        if len([obs for obs in observations if obs["kind"] == "consideration"]) >= 6:
             break
 
     strength_candidates = []
@@ -1117,8 +1148,36 @@ def enrich_contract_analysis(analysis: dict) -> dict:
     # is meaningless without a denominator.
     _attach_dollar_exposure(analysis)
 
-    if not analysis.get("control_map"):
-        analysis["control_map"] = _control_map_for(analysis)
+    # Always merge the AI's control_map with the deterministic 5-lever
+    # baseline. The AI sometimes returns only 2-3 levers; the merged
+    # version is guaranteed to have entries for Rebates, Pricing,
+    # Specialty, Formulary, and Audit / Data. AI-provided assessment
+    # text wins where present (it's grounded in the actual contract).
+    deterministic_map = _control_map_for(analysis)
+    ai_map = analysis.get("control_map")
+    if isinstance(ai_map, list) and ai_map:
+        ai_by_lever = {}
+        for item in ai_map:
+            if isinstance(item, dict):
+                key = str(item.get("lever", "")).strip().lower()
+                if key:
+                    ai_by_lever[key] = item
+        merged = []
+        for det in deterministic_map:
+            key = str(det.get("lever", "")).strip().lower()
+            if key in ai_by_lever:
+                ai_item = ai_by_lever[key]
+                merged.append({
+                    "lever": det["lever"],
+                    "controller": ai_item.get("controller") or det.get("controller"),
+                    "assessment": ai_item.get("assessment") or det.get("assessment"),
+                    "implication": ai_item.get("implication") or det.get("implication"),
+                })
+            else:
+                merged.append(det)
+        analysis["control_map"] = merged
+    else:
+        analysis["control_map"] = deterministic_map
 
     if not analysis.get("control_posture"):
         analysis["control_posture"] = _control_posture_for(analysis)

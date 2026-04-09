@@ -2,6 +2,7 @@ import Sidebar from "@/components/Sidebar";
 import CommandPalette from "@/components/CommandPalette";
 import { ClaimsProvider } from "@/components/ClaimsContext";
 import FeedbackFooter from "@/components/FeedbackFooter";
+import LegalDisclaimer from "@/components/LegalDisclaimer";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,6 +13,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 pt-16 lg:pt-8">
           {children}
           <FeedbackFooter />
+          <LegalDisclaimer />
         </div>
       </main>
     </ClaimsProvider>

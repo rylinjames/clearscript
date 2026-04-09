@@ -717,20 +717,41 @@ export default function ContractsPage() {
   const controlPosture = (rawContractAnalysis?.control_posture as ControlPosture | undefined) || undefined;
   const structuralRiskOverride = (rawContractAnalysis?.structural_risk_override as StructuralRiskOverride | undefined) || undefined;
   // Show every benchmark observation the model produced, sorted by tier
-  // (Tier 1 economics first) then severity (high before medium/low). The
-  // previous .slice(0, 4) was truncating Tier 2 observations off the end
-  // of the array, leaving the user with a "Tier 2: 89% risk" score in
-  // the weighted scores card and zero explanation of what was in Tier 2.
+  // (Tier 1 economics first) then severity (high before medium/low),
+  // with a dedup pass that drops duplicate (category, tier) cards.
+  // Even after the backend dedup in _derive_benchmark_observations, the
+  // AI itself sometimes generates two cards for the same Tier 1 Rebates
+  // slot with slightly different observation text but identical
+  // recommendation. The frontend dedup is the belt-and-suspenders
+  // backstop so the user never sees the same finding twice.
   const SEVERITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
-  const benchmarkObservations = (
-    (rawContractAnalysis?.benchmark_observations as BenchmarkObservation[] | undefined) || []
-  )
-    .slice() // copy before sort to avoid mutating the source
-    .sort((a, b) => {
+  const benchmarkObservations = (() => {
+    const raw = (rawContractAnalysis?.benchmark_observations as BenchmarkObservation[] | undefined) || [];
+    const sorted = raw.slice().sort((a, b) => {
       const tierDiff = (a.tier ?? 99) - (b.tier ?? 99);
       if (tierDiff !== 0) return tierDiff;
       return (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9);
     });
+    const seen = new Set<string>();
+    const out: BenchmarkObservation[] = [];
+    for (const obs of sorted) {
+      // Dedup key: category + tier + first 5 words of recommendation.
+      // Two cards saying "Tie passthrough guarantees..." and "Expand
+      // the definition of eligible rebates..." for the same Tier 1
+      // Rebates slot get coalesced into the highest-severity one.
+      const recPrefix = (obs.recommendation || "").trim().split(/\s+/).slice(0, 5).join(" ").toLowerCase();
+      const key = `${obs.category || ""}::${obs.tier ?? "?"}::${recPrefix}`;
+      // For different recommendation prefixes within the same (category,
+      // tier), still allow both — the user might genuinely have two
+      // distinct issues in the same tier.
+      const slotKey = `${obs.category || ""}::${obs.tier ?? "?"}`;
+      if (seen.has(key) || seen.has(slotKey)) continue;
+      seen.add(key);
+      seen.add(slotKey);
+      out.push(obs);
+    }
+    return out;
+  })();
   // All immediate actions from the contract analysis. Used to be sliced to
   // 3 and tucked into a sidebar subhead — now rendered as a top-level panel
   // right under the deal-score metric cards so it's the second thing the
@@ -1074,56 +1095,86 @@ export default function ContractsPage() {
             </div>
           </div>
 
-          {financialExposure && (
-            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Supporting Leakage Estimates</h3>
-                {financialExposure.summary && <p className="text-sm text-gray-500 mt-1">{financialExposure.summary}</p>}
-                {financialExposure.mode === "claims_backed" && financialExposure.claims_context?.custom_data_loaded && financialExposure.claims_context?.claims_count != null && (
-                  <p className="text-xs text-emerald-700 mt-2">
-                    Based on {financialExposure.claims_context.claims_count.toLocaleString()} uploaded claims
-                    {financialExposure.claims_context.claims_filename ? ` from ${financialExposure.claims_context.claims_filename}` : ""}
-                    {financialExposure.claims_context.date_range_start && financialExposure.claims_context.date_range_end ? ` (${financialExposure.claims_context.date_range_start} to ${financialExposure.claims_context.date_range_end})` : ""}.
-                  </p>
-                )}
-                {(!financialExposure.claims_context?.custom_data_loaded) && (
-                  <p className="text-xs text-amber-700 mt-2">
-                    Dollar figures below are illustrative — based on a sample claims dataset. Upload your real claims on the Claims page to recompute against your actual spend.
-                  </p>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
-                {[
-                  { label: "Rebate Leakage", item: financialExposure.rebate_leakage },
-                  { label: "Spread Exposure", item: financialExposure.spread_exposure },
-                  { label: "Specialty Control", item: financialExposure.specialty_control },
-                ].map(({ label, item }) => item ? (
-                  <div key={label} className="p-5">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-semibold text-gray-900">{label}</p>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(item.level)}`}>
-                        {item.level.toUpperCase()}
-                      </span>
-                    </div>
-                    {item.dollar_estimate_low != null && item.dollar_estimate_high != null ? (
-                      <>
-                        <p className="text-2xl font-bold text-gray-900">
-                          {formatUsdShort(item.dollar_estimate_low)}
-                          <span className="text-gray-400 mx-1">–</span>
-                          {formatUsdShort(item.dollar_estimate_high)}
-                          <span className="text-sm font-normal text-gray-500"> /yr</span>
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">{item.estimate}</p>
-                      </>
-                    ) : (
-                      <p className="text-lg font-bold text-gray-900">{item.estimate}</p>
-                    )}
-                    <p className="text-sm text-gray-600 mt-2">{item.driver}</p>
+          {financialExposure && (() => {
+            // Compute total annual leakage = sum of the three category
+            // dollar ranges. This is the single number a CFO actually
+            // cares about — previously the user had to mentally add
+            // three separate ranges to get it. Surface it as the
+            // headline of the Supporting Leakage Estimates section.
+            const entries: FinancialExposureEntry[] = [
+              financialExposure.rebate_leakage,
+              financialExposure.spread_exposure,
+              financialExposure.specialty_control,
+            ].filter((e): e is FinancialExposureEntry => !!e);
+            const totalLow = entries.reduce((sum, e) => sum + (e.dollar_estimate_low ?? 0), 0);
+            const totalHigh = entries.reduce((sum, e) => sum + (e.dollar_estimate_high ?? 0), 0);
+            const hasTotal = totalLow > 0 || totalHigh > 0;
+            const customLoaded = !!financialExposure.claims_context?.custom_data_loaded;
+            return (
+              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Supporting Leakage Estimates</h3>
+                  {financialExposure.summary && <p className="text-sm text-gray-500 mt-1">{financialExposure.summary}</p>}
+                  {customLoaded && financialExposure.claims_context?.claims_count != null && (
+                    <p className="text-xs text-emerald-700 mt-2">
+                      Based on {financialExposure.claims_context.claims_count.toLocaleString()} uploaded claims
+                      {financialExposure.claims_context.claims_filename ? ` from ${financialExposure.claims_context.claims_filename}` : ""}
+                      {financialExposure.claims_context.date_range_start && financialExposure.claims_context.date_range_end ? ` (${financialExposure.claims_context.date_range_start} to ${financialExposure.claims_context.date_range_end})` : ""}.
+                    </p>
+                  )}
+                  {!customLoaded && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      Dollar figures below are illustrative — based on a representative 1,000-employee self-insured plan. Upload your real claims on the Claims page to recompute against your actual spend.
+                    </p>
+                  )}
+                </div>
+                {hasTotal && (
+                  <div className="px-6 py-5 bg-gradient-to-r from-red-50 to-amber-50 border-b border-gray-200">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700 mb-1">Total Estimated Annual Leakage</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {formatUsdShort(totalLow)}
+                      <span className="text-gray-400 mx-2">–</span>
+                      {formatUsdShort(totalHigh)}
+                      <span className="text-base font-normal text-gray-600 ml-1">/yr</span>
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Sum of rebate leakage, spread exposure, and specialty channel control across all three categories below.
+                    </p>
                   </div>
-                ) : null)}
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+                  {[
+                    { label: "Rebate Leakage", item: financialExposure.rebate_leakage },
+                    { label: "Spread Exposure", item: financialExposure.spread_exposure },
+                    { label: "Specialty Control", item: financialExposure.specialty_control },
+                  ].map(({ label, item }) => item ? (
+                    <div key={label} className="p-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold text-gray-900">{label}</p>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${riskBadgeStyles(item.level)}`}>
+                          {item.level.toUpperCase()}
+                        </span>
+                      </div>
+                      {item.dollar_estimate_low != null && item.dollar_estimate_high != null ? (
+                        <>
+                          <p className="text-2xl font-bold text-gray-900">
+                            {formatUsdShort(item.dollar_estimate_low)}
+                            <span className="text-gray-400 mx-1">–</span>
+                            {formatUsdShort(item.dollar_estimate_high)}
+                            <span className="text-sm font-normal text-gray-500"> /yr</span>
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">{item.estimate}</p>
+                        </>
+                      ) : (
+                        <p className="text-lg font-bold text-gray-900">{item.estimate}</p>
+                      )}
+                      <p className="text-sm text-gray-600 mt-2">{item.driver}</p>
+                    </div>
+                  ) : null)}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {linkedFindings.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5 mb-6">

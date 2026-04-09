@@ -1121,28 +1121,83 @@ def get_claims_status() -> Dict[str, Any]:
     }
 
 
+# Representative spend totals for an "illustrative" benchmark plan that
+# we use when the user has not uploaded their own claims data. The
+# previous implementation used the synthetic 500-claim sample dataset
+# (~$432k brand spend, ~$128k specialty spend, ~$450k total) which
+# made the dollar-denominated leakage figures look misleadingly small
+# — a CFO would see "rebate leakage $13k-$26k" and think the problem
+# was rounding error.
+#
+# These benchmark totals are sized for a typical 1,000-employee
+# self-insured employer plan. Sources:
+#   - KFF Employer Health Benefits Survey (avg Rx spend per employee
+#     for self-insured plans is ~$2,000-2,500/yr in commercial market)
+#   - PSG specialty drug share has trended from 25% in 2015 to ~52%
+#     in 2024; we use 50% as the midpoint
+#   - Generic dispensing rate ~88% of scripts but only ~15% of dollars
+#     because brand drugs are more expensive per script
+#
+# Total plan paid:    $2.5M  (1,000 employees × $2,500/yr Rx spend)
+# Brand spend:        $2.1M  (~85% of total — generics are cheap per script)
+# Generic spend:      $0.4M  (~15% of total)
+# Specialty spend:    $1.25M (~50% of total Rx spend, per PSG)
+_BENCHMARK_PLAN_TOTALS = {
+    "total_plan_paid": 2_500_000.00,
+    "brand_spend":     2_100_000.00,
+    "generic_spend":     400_000.00,
+    "specialty_spend": 1_250_000.00,
+    "claims_count":       28_000,   # ~28 claims/employee/yr × 1,000 employees
+    "covered_lives":       1_000,
+}
+
+
 def get_claims_totals() -> Dict[str, Any]:
     """
-    Compute spend subtotals across the currently-loaded claims dataset.
+    Return spend subtotals used by `enrich_contract_analysis` to convert
+    percentage-based leakage estimates from the AI into real dollar
+    figures the user can act on.
 
-    Used by `enrich_contract_analysis` to convert percentage-based
-    leakage estimates from the AI ("3-6% of brand spend") into real
-    dollar figures the user can act on. If no real claims have been
-    uploaded yet, the function still returns subtotals from the
-    synthetic dataset, but flags `custom_data_loaded=False` so the
-    caller can label the dollar figures as illustrative rather than
-    based on the user's actual data.
+    Two modes:
+
+      - **claims_backed** (preferred): the user has uploaded their own
+        claims via /api/claims/upload, so we sum across the real data.
+        `custom_data_loaded` is True. This produces dollar figures
+        anchored to the user's actual spend.
+
+      - **illustrative** (fallback): no real claims yet, so we return
+        the _BENCHMARK_PLAN_TOTALS constants representing a typical
+        1,000-employee self-insured plan. `custom_data_loaded` is False
+        so the frontend can label the figures as illustrative.
+
+    The previous illustrative path summed across the synthetic 500-claim
+    sample dataset (~$450k total spend). That made every dollar figure
+    look two orders of magnitude smaller than reality and undermined
+    the whole point of the leakage analysis. The benchmark plan totals
+    fix that without misrepresenting them as the user's actual data.
 
     Returns a dict with the four subtotals the leakage model needs:
-      - total_plan_paid: sum of plan_paid across all claims (denominator
-        for "% of total claims spend" estimates)
-      - brand_spend: plan_paid for non-generic claims (denominator for
-        "% of brand drug spend" estimates)
-      - generic_spend: plan_paid for generic claims
-      - specialty_spend: plan_paid where channel == "specialty"
-        (denominator for "% of specialty Rx spend" estimates)
+      - total_plan_paid: denominator for "% of total claims spend"
+      - brand_spend:     denominator for "% of brand drug spend"
+      - generic_spend:   denominator for "% of generic spend"
+      - specialty_spend: denominator for "% of specialty Rx spend"
     """
     global _custom_claims_loaded
+
+    # Illustrative mode: return the benchmark plan totals.
+    if not _custom_claims_loaded:
+        return {
+            "custom_data_loaded": False,
+            "claims_count": _BENCHMARK_PLAN_TOTALS["claims_count"],
+            "covered_lives": _BENCHMARK_PLAN_TOTALS["covered_lives"],
+            "total_plan_paid": _BENCHMARK_PLAN_TOTALS["total_plan_paid"],
+            "brand_spend": _BENCHMARK_PLAN_TOTALS["brand_spend"],
+            "generic_spend": _BENCHMARK_PLAN_TOTALS["generic_spend"],
+            "specialty_spend": _BENCHMARK_PLAN_TOTALS["specialty_spend"],
+            "is_benchmark": True,
+        }
+
+    # Claims-backed mode: sum across the real uploaded claims dataset.
     claims = get_claims()
     total_plan_paid = 0.0
     brand_spend = 0.0
@@ -1161,12 +1216,13 @@ def get_claims_totals() -> Dict[str, Any]:
         if (c.get("channel") or "").lower() == "specialty":
             specialty_spend += paid
     return {
-        "custom_data_loaded": _custom_claims_loaded,
+        "custom_data_loaded": True,
         "claims_count": len(claims),
         "total_plan_paid": round(total_plan_paid, 2),
         "brand_spend": round(brand_spend, 2),
         "generic_spend": round(generic_spend, 2),
         "specialty_spend": round(specialty_spend, 2),
+        "is_benchmark": False,
     }
 
 def get_drugs() -> List[Dict[str, Any]]:
