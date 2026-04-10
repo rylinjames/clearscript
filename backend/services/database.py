@@ -131,7 +131,8 @@ SQLITE_SCHEMA = [
         filename TEXT NOT NULL,
         upload_date TEXT DEFAULT (datetime('now')),
         claims_json TEXT NOT NULL,
-        claims_count INTEGER NOT NULL
+        claims_count INTEGER NOT NULL,
+        contract_id INTEGER
     )
     """,
     """
@@ -222,7 +223,8 @@ POSTGRES_SCHEMA = [
         filename TEXT NOT NULL,
         upload_date TIMESTAMPTZ DEFAULT NOW(),
         claims_json TEXT NOT NULL,
-        claims_count INTEGER NOT NULL
+        claims_count INTEGER NOT NULL,
+        contract_id INTEGER
     )
     """,
     """

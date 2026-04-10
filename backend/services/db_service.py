@@ -34,14 +34,24 @@ def _ensure_db() -> None:
 
 # ─── Claims ──────────────────────────────────────────────────────────────────
 
-def save_claims(filename: str, claims: List[Dict[str, Any]]) -> int:
+def save_claims(filename: str, claims: List[Dict[str, Any]], contract_id: Optional[int] = None) -> int:
+    """Save uploaded claims to the database, optionally associated with a specific contract."""
     conn = database.get_conn()
     try:
         claims_json = json.dumps(claims, default=str)
+        # If uploading for a specific contract, remove any previous claims
+        # for that contract first so there's only ever one active claims
+        # file per contract.
+        if contract_id is not None:
+            database.execute(
+                conn,
+                "DELETE FROM uploaded_claims WHERE contract_id = ?",
+                (contract_id,),
+            )
         row_id = database.execute_insert(
             conn,
-            "INSERT INTO uploaded_claims (filename, claims_json, claims_count) VALUES (?, ?, ?)",
-            (filename, claims_json, len(claims)),
+            "INSERT INTO uploaded_claims (filename, claims_json, claims_count, contract_id) VALUES (?, ?, ?, ?)",
+            (filename, claims_json, len(claims), contract_id),
         )
         conn.commit()
         return row_id
@@ -52,12 +62,43 @@ def save_claims(filename: str, claims: List[Dict[str, Any]]) -> int:
         conn.close()
 
 
-def load_latest_claims() -> Optional[Dict[str, Any]]:
+def load_claims_for_contract(contract_id: int) -> Optional[Dict[str, Any]]:
+    """Load the claims file associated with a specific contract."""
     conn = database.get_conn()
     try:
         row = database.execute(
             conn,
-            "SELECT filename, upload_date, claims_json, claims_count FROM uploaded_claims ORDER BY id DESC LIMIT 1",
+            "SELECT filename, upload_date, claims_json, claims_count FROM uploaded_claims WHERE contract_id = ? ORDER BY id DESC LIMIT 1",
+            (contract_id,),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            claims = json.loads(row[2])
+        except json.JSONDecodeError:
+            logger.error(f"Corrupted claims JSON for contract {contract_id}: {row[0]}")
+            return None
+        return {
+            "filename": row[0],
+            "upload_date": str(row[1]) if row[1] is not None else None,
+            "claims": claims,
+            "claims_count": row[3],
+            "contract_id": contract_id,
+        }
+    except Exception as e:
+        logger.error(f"Failed to load claims for contract {contract_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def load_latest_claims() -> Optional[Dict[str, Any]]:
+    """Load the most recent claims file regardless of contract association."""
+    conn = database.get_conn()
+    try:
+        row = database.execute(
+            conn,
+            "SELECT filename, upload_date, claims_json, claims_count, contract_id FROM uploaded_claims ORDER BY id DESC LIMIT 1",
         ).fetchone()
         if not row:
             return None
@@ -71,6 +112,7 @@ def load_latest_claims() -> Optional[Dict[str, Any]]:
             "upload_date": str(row[1]) if row[1] is not None else None,
             "claims": claims,
             "claims_count": row[3],
+            "contract_id": row[4] if len(row) > 4 else None,
         }
     except Exception as e:
         logger.error(f"Failed to load claims: {e}")
@@ -79,10 +121,14 @@ def load_latest_claims() -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def clear_claims() -> None:
+def clear_claims(contract_id: Optional[int] = None) -> None:
+    """Clear claims data. If contract_id is specified, only clear that contract's claims."""
     conn = database.get_conn()
     try:
-        database.execute(conn, "DELETE FROM uploaded_claims")
+        if contract_id is not None:
+            database.execute(conn, "DELETE FROM uploaded_claims WHERE contract_id = ?", (contract_id,))
+        else:
+            database.execute(conn, "DELETE FROM uploaded_claims")
         conn.commit()
     except Exception as e:
         logger.error(f"Failed to clear claims: {e}")

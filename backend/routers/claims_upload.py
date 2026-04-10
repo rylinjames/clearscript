@@ -8,7 +8,7 @@ Uploaded claims replace synthetic data for all analysis endpoints.
 import csv
 import io
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
@@ -91,8 +91,10 @@ def _csv_row_to_claim(row: Dict[str, str], index: int) -> Dict[str, Any]:
 
 
 @router.post("/upload")
-async def upload_claims(file: UploadFile = File(...)):
-    """Upload a pharmacy claims CSV file. Replaces synthetic data for all analysis endpoints."""
+async def upload_claims(file: UploadFile = File(...), contract_id: Optional[int] = None):
+    """Upload a pharmacy claims CSV file. If contract_id is provided, the claims
+    are associated with that specific contract so they load automatically when
+    the user revisits that analysis."""
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV (.csv)")
 
@@ -154,14 +156,16 @@ async def upload_claims(file: UploadFile = File(...)):
 
     set_claims_data(claims, info)
 
-    # Persist to SQLite so data survives server restarts
+    # Persist to database so data survives server restarts. If a
+    # contract_id was provided, the claims are scoped to that contract.
     try:
-        save_claims(file.filename, claims)
+        save_claims(file.filename, claims, contract_id=contract_id)
     except Exception as e:
-        logger.warning(f"Failed to persist claims to SQLite: {e}")
+        logger.warning(f"Failed to persist claims to database: {e}")
 
     return {
         "status": "success",
+        "contract_id": contract_id,
         "message": f"Successfully uploaded {len(claims)} claims from {file.filename}",
         "summary": {
             "total_claims": len(claims),
@@ -182,7 +186,7 @@ async def claims_status():
 
 @router.delete("/reset")
 async def reset_claims():
-    """Reset back to synthetic/sample data."""
+    """Clear all uploaded claims data."""
     reset_claims_data()
     try:
         db_clear_claims()
@@ -190,8 +194,28 @@ async def reset_claims():
         pass
     return {
         "status": "success",
-        "message": "Claims data reset to synthetic sample data.",
-        "claims_count": len(get_claims()),
+        "message": "Claims data cleared.",
+        "claims_count": 0,
+    }
+
+
+@router.get("/for-contract/{contract_id}")
+async def claims_for_contract(contract_id: int):
+    """Check if a specific contract has associated claims data."""
+    from services.db_service import load_claims_for_contract
+    saved = load_claims_for_contract(contract_id)
+    if not saved:
+        return {
+            "has_claims": False,
+            "contract_id": contract_id,
+            "claims_count": 0,
+        }
+    return {
+        "has_claims": True,
+        "contract_id": contract_id,
+        "claims_count": saved["claims_count"],
+        "filename": saved["filename"],
+        "upload_date": saved["upload_date"],
     }
 
 

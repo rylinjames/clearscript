@@ -346,9 +346,85 @@ async def list_contracts():
 
 @router.get("/{contract_id}")
 async def get_contract(contract_id: int):
-    """Fetch one persisted contract analysis by id."""
+    """Fetch one persisted contract analysis by id, including claims status."""
     item = load_contract_analysis_by_id(contract_id)
     if not item:
         raise HTTPException(status_code=404, detail=f"No contract analysis with id={contract_id}")
+    # Check if this contract has associated claims
+    try:
+        from services.db_service import load_claims_for_contract
+        claims_info = load_claims_for_contract(contract_id)
+        item["has_claims"] = bool(claims_info)
+        if claims_info:
+            item["claims_filename"] = claims_info.get("filename")
+            item["claims_count"] = claims_info.get("claims_count")
+    except Exception:
+        item["has_claims"] = False
     return {"status": "success", "contract": item}
+
+
+@router.post("/{contract_id}/re-enrich")
+async def re_enrich_contract(contract_id: int):
+    """Re-run the enrichment pipeline on a persisted contract analysis.
+
+    Called after claims are uploaded for an existing contract so the
+    dollar-denominated leakage estimates can be recomputed against the
+    real claims data instead of showing percentage ranges.
+    """
+    item = load_contract_analysis_by_id(contract_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"No contract analysis with id={contract_id}")
+
+    analysis = item.get("analysis")
+    if not isinstance(analysis, dict):
+        raise HTTPException(status_code=422, detail="Contract analysis is malformed or missing.")
+
+    # Load the claims associated with this contract into the global
+    # cache so _attach_dollar_exposure can find them via get_claims_totals.
+    try:
+        from services.db_service import load_claims_for_contract
+        from services.data_service import set_claims_data
+        claims_info = load_claims_for_contract(contract_id)
+        if claims_info and claims_info.get("claims"):
+            set_claims_data(claims_info["claims"], {
+                "filename": claims_info.get("filename"),
+                "contract_id": contract_id,
+            })
+    except Exception as e:
+        logger.warning(f"Could not load claims for re-enrichment: {e}")
+
+    # Strip the old dollar fields so they get recomputed from the new
+    # claims data (or left absent if no claims are available).
+    exposure = analysis.get("financial_exposure")
+    if isinstance(exposure, dict):
+        for key in ("rebate_leakage", "spread_exposure", "specialty_control"):
+            entry = exposure.get(key)
+            if isinstance(entry, dict):
+                for field in ("dollar_estimate_low", "dollar_estimate_high", "dollar_denominator", "dollar_denominator_label", "dollar_estimate_basis"):
+                    entry.pop(field, None)
+        exposure.pop("claims_context", None)
+
+    # Strip old savings from redlines so they get recomputed.
+    for r in (analysis.get("redline_suggestions") or []):
+        if isinstance(r, dict):
+            for field in ("savings_low", "savings_high", "savings_category", "savings_basis"):
+                r.pop(field, None)
+
+    # Re-run enrichment
+    from services.ai_service import _attach_dollar_exposure, _attach_redline_savings
+    _attach_dollar_exposure(analysis)
+    _attach_redline_savings(analysis)
+
+    # Persist the updated analysis
+    try:
+        save_contract_analysis(item.get("filename", "unknown"), analysis)
+    except Exception as e:
+        logger.warning(f"Could not re-save enriched analysis: {e}")
+
+    return {
+        "status": "success",
+        "message": "Contract analysis re-enriched with updated claims data.",
+        "contract_id": contract_id,
+        "analysis": analysis,
+    }
 

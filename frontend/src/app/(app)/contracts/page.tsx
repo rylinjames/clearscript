@@ -549,6 +549,16 @@ function ContractsPageInner() {
   // rather than from a fresh upload. Used to show a "Loaded from
   // history" badge so the user knows they're looking at a prior scan.
   const [loadedFromHistoryId, setLoadedFromHistoryId] = useState<number | null>(null);
+
+  // Claims-per-contract state: tracks whether the current contract has
+  // associated claims and handles the inline claims upload flow.
+  const [contractClaimsStatus, setContractClaimsStatus] = useState<{
+    has_claims: boolean;
+    claims_count: number;
+    filename: string | null;
+  } | null>(null);
+  const [claimsUploading, setClaimsUploading] = useState(false);
+  const [claimsUploadError, setClaimsUploadError] = useState<string | null>(null);
   const [contractFilename, setContractFilename] = useState<string>("contract");
   // SQLite/Postgres primary key for the most recently uploaded contract,
   // returned by /api/contracts/upload. Used to deep-link the audit-letter
@@ -761,6 +771,80 @@ function ContractsPageInner() {
     // one-shot on mount when the URL parameter is present.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkContractId]);
+
+  // Upload claims CSV for the current contract and re-enrich the
+  // analysis so dollar-denominated leakage estimates appear.
+  const handleClaimsUpload = async (file: File) => {
+    if (!contractRowId) return;
+    setClaimsUploading(true);
+    setClaimsUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/claims/upload?contract_id=${contractRowId}`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        let detail = `Claims upload failed with status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
+      const uploadData = await res.json();
+      // Re-enrich the contract analysis with the new claims data
+      const enrichRes = await fetch(`/api/contracts/${contractRowId}/re-enrich`, {
+        method: "POST",
+      });
+      if (enrichRes.ok) {
+        const enrichData = await enrichRes.json();
+        if (enrichData.analysis) {
+          // Re-populate the page with the enriched analysis
+          processResponse({
+            id: contractRowId,
+            filename: contractFilename,
+            analysis: enrichData.analysis,
+          });
+        }
+      }
+      setContractClaimsStatus({
+        has_claims: true,
+        claims_count: uploadData.summary?.total_claims || 0,
+        filename: file.name,
+      });
+      setStickyClaimsDismissed(true); // Hide the "upload claims" CTA
+    } catch (e) {
+      setClaimsUploadError(e instanceof Error ? e.message : "Claims upload failed");
+    } finally {
+      setClaimsUploading(false);
+    }
+  };
+
+  // Fetch claims status when a contract is loaded (from upload or history)
+  useEffect(() => {
+    if (!contractRowId) {
+      setContractClaimsStatus(null);
+      return;
+    }
+    const fetchClaimsStatus = async () => {
+      try {
+        const res = await fetch(`/api/claims/for-contract/${contractRowId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setContractClaimsStatus({
+            has_claims: data.has_claims,
+            claims_count: data.claims_count || 0,
+            filename: data.filename || null,
+          });
+        }
+      } catch {
+        // Non-critical — claims status is optional
+      }
+    };
+    fetchClaimsStatus();
+  }, [contractRowId]);
 
   const handlePlanDocUpload = async (file: File) => {
     setPlanLoading(true);
@@ -2064,6 +2148,60 @@ function ContractsPageInner() {
                   </li>
                 ))}
               </ol>
+            </div>
+          )}
+
+          {/* ═══ UPLOAD CLAIMS FOR THIS CONTRACT ═══
+              Inline claims upload tied to the current contract. When
+              the user uploads a claims CSV here, it gets associated
+              with this contract's row in the database and the analysis
+              is re-enriched so dollar-denominated leakage figures
+              replace the percentage ranges. This is the flow that
+              was missing — previously claims upload was an orphaned
+              page in the sidebar with no connection to any contract.
+          */}
+          {contractRowId !== null && (
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">
+                  {planBenefits ? "1.5" : "2"}
+                </span>
+                <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Upload Claims for This Contract</h2>
+                {contractClaimsStatus?.has_claims && (
+                  <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {contractClaimsStatus.claims_count.toLocaleString()} claims loaded
+                    {contractClaimsStatus.filename && ` from ${contractClaimsStatus.filename}`}
+                  </span>
+                )}
+              </div>
+              {contractClaimsStatus?.has_claims ? (
+                <p className="text-sm text-emerald-700">
+                  Claims data is loaded for this contract. The leakage estimates above reflect your plan&apos;s actual spend.
+                  Upload a new CSV to replace the existing claims.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 mb-4">
+                  Upload your pharmacy claims CSV to convert the percentage-based leakage estimates above into dollar figures based on your plan&apos;s actual spend.
+                </p>
+              )}
+              <div className="mt-3">
+                <FileUpload
+                  onFileSelect={handleClaimsUpload}
+                  label="Upload pharmacy claims CSV"
+                />
+              </div>
+              {claimsUploading && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading claims and re-computing leakage estimates...
+                </div>
+              )}
+              {claimsUploadError && (
+                <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-sm text-red-700">{claimsUploadError}</p>
+                </div>
+              )}
             </div>
           )}
 
