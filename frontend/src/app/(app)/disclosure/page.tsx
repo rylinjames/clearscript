@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
-import DataSourceBanner from "@/components/DataSourceBanner";
 import ScoreCircle from "@/components/ScoreCircle";
 import { Search, Loader2, Sparkles, Check, X, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import AIAnalysisProgress from "@/components/AIAnalysisProgress";
@@ -164,9 +163,9 @@ export default function DisclosurePage() {
     const gr = a.gap_report;
     if (gr) {
       const allGaps = [
-        ...(gr.critical_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Critical", recommendation: g })),
-        ...(gr.moderate_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "High", recommendation: g })),
-        ...(gr.minor_gaps || []).map((g: string) => ({ gap: g.split("'")[1] || g.substring(0, 40), impact: "Medium", recommendation: g })),
+        ...(gr.critical_gaps || []).map((g: string) => ({ gap: g, impact: "Critical", recommendation: g })),
+        ...(gr.moderate_gaps || []).map((g: string) => ({ gap: g, impact: "High", recommendation: g })),
+        ...(gr.minor_gaps || []).map((g: string) => ({ gap: g, impact: "Medium", recommendation: g })),
       ];
       setGaps(allGaps);
     } else {
@@ -223,8 +222,6 @@ export default function DisclosurePage() {
           Evaluate PBM disclosure completeness against regulatory requirements
         </p>
       </div>
-
-      <DataSourceBanner />
 
       <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
         <FileUpload
@@ -323,50 +320,30 @@ export default function DisclosurePage() {
 
           {gaps.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wider">
                 Gap Report
               </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                        Missing Item
-                      </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                        Impact
-                      </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                        Recommendation
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {gaps.map((gap, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {gap.gap}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                              gap.impact === "Critical"
-                                ? "bg-red-100 text-red-700"
-                                : gap.impact === "High"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-blue-100 text-blue-700"
-                            }`}
-                          >
-                            {gap.impact}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {gap.recommendation}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-2">
+                {gaps.map((gap, i) => (
+                  <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${
+                    gap.impact === "Critical" ? "bg-red-50" : gap.impact === "High" ? "bg-amber-50" : "bg-blue-50"
+                  }`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold flex-shrink-0 mt-0.5 ${
+                      gap.impact === "Critical"
+                        ? "bg-red-100 text-red-700"
+                        : gap.impact === "High"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {gap.impact}
+                    </span>
+                    <p className={`text-sm leading-relaxed ${
+                      gap.impact === "Critical" ? "text-red-800" : gap.impact === "High" ? "text-amber-800" : "text-blue-800"
+                    }`}>
+                      {gap.gap}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
