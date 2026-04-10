@@ -1071,6 +1071,36 @@ export default function ContractsPage() {
             </div>
           )}
 
+          {/* ═══ Cross-reference promotion banner ═══
+              The Step 2 plan-document upload is the most differentiated
+              feature in the product (contract-vs-SBC alignment) but it
+              previously lived 18 sections below the fold where most users
+              never saw it. This banner sits right under Critical Dates so
+              it's visible above the metric cards and points users at the
+              upload they would otherwise miss. Hidden once a plan document
+              has actually been uploaded so it doesn't nag.
+          */}
+          {!planBenefits && (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl px-5 py-4 mb-6 flex items-center gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-blue-700" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-blue-900">Want a deeper analysis?</p>
+                <p className="text-xs text-blue-800 mt-0.5 leading-relaxed">
+                  Upload your SBC, SPD, or EOC below to cross-reference the plan benefits against this contract and surface gaps the contract-only analysis can&apos;t catch.
+                </p>
+              </div>
+              <a
+                href="#plan-document-upload"
+                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Upload plan doc
+                <ChevronDown className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
             {(() => {
               const dealScore = weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0));
@@ -1124,29 +1154,13 @@ export default function ContractsPage() {
             </div>
           </div>
 
-          {immediateActions.length > 0 && (
-            <div className="bg-white rounded-xl border-2 border-primary-200 shadow-[var(--shadow-card)] overflow-hidden mb-6">
-              <div className="px-6 py-4 bg-primary-50 border-b border-primary-100 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-700">Action Items</p>
-                  <h3 className="text-lg font-bold text-gray-900 mt-1">What to do next</h3>
-                </div>
-                <span className="inline-flex items-center px-3 py-1 rounded-full bg-white border border-primary-200 text-xs font-semibold text-primary-700">
-                  {immediateActions.length} {immediateActions.length === 1 ? "action" : "actions"}
-                </span>
-              </div>
-              <ol className="divide-y divide-gray-100">
-                {immediateActions.map((action, i) => (
-                  <li key={`action-${i}`} className="px-6 py-4 flex gap-4">
-                    <span className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white text-sm font-bold">
-                      {i + 1}
-                    </span>
-                    <p className="text-sm text-gray-800 leading-relaxed pt-0.5">{action}</p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
+          {/* Action Items panel was previously rendered HERE (right
+              under the metric cards row, before the user has seen any
+              evidence). As a customer, that ordering felt premature —
+              the page told me what to do before showing me why. The
+              panel has been moved below the Recommended Contract
+              Redlines section so it functions as the closing summary
+              after the evidence chain. */}
 
           {controlMap.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
@@ -1179,8 +1193,22 @@ export default function ContractsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-            <div className="xl:col-span-2 bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden">
+          {/* Audit Interpretation promoted to full-width callout above
+              the Observations section. Used to live in a sidebar next
+              to a Weighted Tier Scores progress bar (which was internal
+              methodology bleeding into the customer view). The progress
+              bars are gone; this single sentence is one of the strongest
+              pieces of analytical content the platform produces, so it
+              gets its own row right above the evidence cards. */}
+          {auditImplication && (
+            <div className="bg-blue-50 rounded-xl border border-blue-200 p-5 mb-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700 mb-2">Audit Interpretation</p>
+              <p className="text-sm text-blue-900 leading-relaxed">{auditImplication}</p>
+            </div>
+          )}
+
+          <div className="mb-6">
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Observations & Recommendations</h3>
@@ -1252,42 +1280,6 @@ export default function ContractsPage() {
               </div>
             </div>
 
-            <div className="space-y-6">
-              {/* Audit Interpretation pulled out of the old "Risk Framing"
-                  card. The previous card had three sub-blocks (Structural
-                  View, Control View, Audit Interpretation) — the first
-                  two were verbatim duplicates of the Structural Risk
-                  metric card and the Control Posture metric card, and
-                  added nothing. Audit Interpretation is the only one
-                  with new information and is genuinely one of the
-                  strongest single sentences in the entire output. */}
-              {auditImplication && (
-                <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700 mb-2">Audit Interpretation</p>
-                  <p className="text-sm text-blue-900 leading-relaxed">{auditImplication}</p>
-                </div>
-              )}
-
-              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Weighted Tier Scores</h3>
-                <div className="space-y-3">
-                  {(weightedAssessment?.tier_scores || []).map((tier) => (
-                    <div key={tier.tier}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="font-medium text-gray-800">{tier.tier}</span>
-                        <span className="text-gray-500">{tier.score}% risk</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                        <div className={`h-full ${
-                          tier.score >= 65 ? "bg-red-500" : tier.score >= 35 ? "bg-amber-500" : "bg-emerald-500"
-                        }`} style={{ width: `${Math.min(tier.score, 100)}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {/* Action items moved to a prominent top-level panel above. */}
-              </div>
-            </div>
           </div>
 
           {financialExposure && (() => {
@@ -1391,104 +1383,104 @@ export default function ContractsPage() {
               that used to live here was buried below the fold and
               showed the same info as the new top-of-page summary. */}
 
-          <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Contract Clause
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Extracted Value
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Note
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {terms.map((term, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      {term.clause}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">
-                      {term.value}
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge
-                        status={term.status}
-                        label={
-                          term.status === "good"
-                            ? "Employer-Favorable"
-                            : term.status === "warning"
-                            ? "Balanced"
-                            : "PBM-Favorable"
-                        }
-                      />
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {term.note}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Compact extracted-terms strip. The previous version was a
+              4-column 7-row table that duplicated information already
+              shown in the Recommended Contract Redlines section below
+              and the Clause Balance card above. As a customer scanning
+              the page, those rows added no new analytical value — every
+              PBM-favorable row was just a slower, less actionable version
+              of the same finding rendered as a redline. We keep a one-line
+              chip-strip here so users can still see the lever names and
+              their favorability at a glance, but the wall-of-table is
+              gone. The full clause text + suggested language lives in
+              the Redlines section. */}
+          <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Clauses Extracted</h3>
+              <span className="text-xs text-gray-500">{terms.length} {terms.length === 1 ? "clause" : "clauses"} analyzed</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {terms.map((term, i) => (
+                <span
+                  key={i}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${
+                    term.status === "good"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : term.status === "warning"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-red-50 text-red-700 border-red-200"
+                  }`}
+                  title={term.note || term.value}
+                >
+                  {term.clause}
+                  <span className="opacity-60">·</span>
+                  <span className="font-normal">
+                    {term.status === "good" ? "Employer" : term.status === "warning" ? "Balanced" : "PBM"}
+                  </span>
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+              Each PBM-favorable clause is paired with a specific suggested redline below — see Recommended Contract Redlines for the exact language to propose during renegotiation.
+            </p>
           </div>
 
-          {/* Audit Rights Checklist */}
-          {auditChecklist && auditChecklist.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+          {/* ═══ AUDIT-RELATED FINDINGS GROUP ═══
+              Previously the Audit Rights Checklist, Statistical Extrapolation,
+              and Dispute Resolution rendered as three independent sections
+              floating between the leakage banner and the redlines. As a
+              customer reading the page they felt orphaned — Statistical
+              Extrapolation in particular looks like trivia until you see
+              it next to the audit checklist and realize it's part of the
+              same "can the plan sponsor actually verify what they paid
+              for" question. Grouping them under a single header makes the
+              audit story coherent. */}
+          {(auditChecklist && auditChecklist.length > 0) || disputeResolution || statisticalExtrapolation ? (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-primary-600" />
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
-                  Audit Rights Checklist
-                </h3>
-                <span className="ml-auto text-xs text-gray-500">
-                  {auditChecklist.filter(c => c.found).length}/{auditChecklist.length} found
-                </span>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {auditChecklist.map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                    {item.found ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                    ) : (
-                      <XCircleIcon className="w-5 h-5 text-red-400 flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{item.item}</p>
-                      {item.details && (
-                        <p className="text-xs text-gray-500 mt-0.5">{item.details}</p>
-                      )}
-                    </div>
-                    <StatusBadge
-                      status={item.found ? "good" : "critical"}
-                      label={item.found ? "Found" : "Missing"}
-                    />
+                Audit & Enforcement Rights
+              </h3>
+              <p className="text-xs text-gray-500 mb-4 max-w-3xl">
+                Whether the plan sponsor can actually verify what they paid for, project errors across the full claims population, and force the PBM to fix problems found during an audit.
+              </p>
+
+              {/* Audit Rights Checklist */}
+              {auditChecklist && auditChecklist.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-4">
+                  <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-gray-900">
+                      Audit Rights Checklist
+                    </h4>
+                    <span className="ml-auto text-xs text-gray-500">
+                      {auditChecklist.filter(c => c.found).length}/{auditChecklist.length} provisions found
+                    </span>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                  <div className="divide-y divide-gray-100">
+                    {auditChecklist.map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
+                        {item.found ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                        ) : (
+                          <XCircleIcon className="w-5 h-5 text-red-400 flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900">{item.item}</p>
+                          {item.details && (
+                            <p className="text-xs text-gray-500 mt-0.5">{item.details}</p>
+                          )}
+                        </div>
+                        <StatusBadge
+                          status={item.found ? "good" : "critical"}
+                          label={item.found ? "Found" : "Missing"}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {/* "Narrow Rebate Definition Detected" callout deleted.
-              The same finding was already rendered in three other
-              places: (1) the deduplicated Tier 1 Rebates observation
-              card, (2) the Rebate Passthrough row of the extracted
-              terms table, and (3) the Economic Linkages section.
-              Showing it a fourth time here was the redundancy that
-              signaled "AI slop" to skeptical readers. */}
-
-          {/* Dispute Resolution & Statistical Extrapolation
-              Each card now has a "Why it matters" line so a benefits
-              manager who has never heard of statistical extrapolation
-              understands the consequence — these used to render as
-              trivia cards with no actionable framing. */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Dispute Resolution */}
             {disputeResolution && (
               <div className={`rounded-xl border p-5 ${disputeRiskColor(disputeResolution.risk_level)}`}>
@@ -1560,7 +1552,9 @@ export default function ContractsPage() {
                 </div>
               </div>
             )}
-          </div>
+              </div>
+            </div>
+          ) : null}
 
           {/* ═══ REDLINE SUGGESTIONS ═══ */}
           {rawContractAnalysis && (rawContractAnalysis as Record<string, unknown>).redline_suggestions && Array.isArray((rawContractAnalysis as Record<string, unknown>).redline_suggestions) && ((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, unknown>>).length > 0 && (
@@ -1664,11 +1658,76 @@ export default function ContractsPage() {
                   );
                 })}
               </div>
+              {/* Reconciliation footer: rolls up the per-redline savings
+                  chips so a customer can see "if I take all of these
+                  asks to the table, I recover $X of $Y total leakage."
+                  Without this, a skeptical reader notices that the
+                  redline chips don't add up to the leakage banner and
+                  loses trust. Showing the math explicitly closes the
+                  loop. Only renders when both the redlines have savings
+                  AND the leakage banner has dollar totals. */}
+              {(() => {
+                const redlines = ((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, unknown>>) || [];
+                const recoveredLow = redlines.reduce((sum, r) => sum + (typeof (r as { savings_low?: number }).savings_low === "number" ? (r as { savings_low?: number }).savings_low! : 0), 0);
+                const recoveredHigh = redlines.reduce((sum, r) => sum + (typeof (r as { savings_high?: number }).savings_high === "number" ? (r as { savings_high?: number }).savings_high! : 0), 0);
+                const exposureEntries: FinancialExposureEntry[] = financialExposure ? [
+                  financialExposure.rebate_leakage,
+                  financialExposure.spread_exposure,
+                  financialExposure.specialty_control,
+                ].filter((e): e is FinancialExposureEntry => !!e) : [];
+                const totalLeakageLow = exposureEntries.reduce((s, e) => s + (e.dollar_estimate_low ?? 0), 0);
+                const totalLeakageHigh = exposureEntries.reduce((s, e) => s + (e.dollar_estimate_high ?? 0), 0);
+                if (recoveredLow <= 0 && recoveredHigh <= 0) return null;
+                if (totalLeakageLow <= 0 && totalLeakageHigh <= 0) return null;
+                const pctLow = totalLeakageHigh > 0 ? Math.round((recoveredLow / totalLeakageHigh) * 100) : 0;
+                const pctHigh = totalLeakageLow > 0 ? Math.round((recoveredHigh / totalLeakageLow) * 100) : 0;
+                return (
+                  <div className="px-6 py-4 bg-gradient-to-r from-emerald-50 to-blue-50 border-t border-gray-200">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700 mb-1">If you accept all redlines</p>
+                    <p className="text-base font-bold text-gray-900">
+                      Recover {formatUsdShort(recoveredLow)}–{formatUsdShort(recoveredHigh)}/yr
+                      <span className="text-sm font-normal text-gray-600"> of {formatUsdShort(totalLeakageLow)}–{formatUsdShort(totalLeakageHigh)} total annual leakage</span>
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Approximately {pctLow}–{pctHigh}% of total leakage is directly recoverable through these clause changes. The remaining gap reflects structural issues (e.g. specialty channel lock-in) that require vendor changes or carve-outs rather than redline language.
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Action Items panel — moved here from above the metric cards
+              so it functions as a closing summary AFTER the user has
+              seen the diagnosis, the leakage estimate, the audit story,
+              and the redline language. Reads as "now that you've seen
+              the evidence, here's what to do Monday morning." */}
+          {immediateActions.length > 0 && (
+            <div className="bg-white rounded-xl border-2 border-primary-200 shadow-[var(--shadow-card)] overflow-hidden mb-6">
+              <div className="px-6 py-4 bg-primary-50 border-b border-primary-100 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-700">Next Steps</p>
+                  <h3 className="text-lg font-bold text-gray-900 mt-1">What to do Monday morning</h3>
+                </div>
+                <span className="inline-flex items-center px-3 py-1 rounded-full bg-white border border-primary-200 text-xs font-semibold text-primary-700">
+                  {immediateActions.length} {immediateActions.length === 1 ? "action" : "actions"}
+                </span>
+              </div>
+              <ol className="divide-y divide-gray-100">
+                {immediateActions.map((action, i) => (
+                  <li key={`action-${i}`} className="px-6 py-4 flex gap-4">
+                    <span className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white text-sm font-bold">
+                      {i + 1}
+                    </span>
+                    <p className="text-sm text-gray-800 leading-relaxed pt-0.5">{action}</p>
+                  </li>
+                ))}
+              </ol>
             </div>
           )}
 
           {/* ═══ STEP 2: Plan Document Upload ═══ */}
-          <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
+          <div id="plan-document-upload" className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6 scroll-mt-20">
             <div className="flex items-center gap-2 mb-4">
               <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">2</span>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Plan Document (SBC / SPD / EOC)</h2>
