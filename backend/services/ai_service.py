@@ -1258,18 +1258,27 @@ def _control_posture_for(analysis: dict) -> dict:
     # levers are in it.
     pbm_ratio = len(pbm_controlled) / total
 
+    # Build a contract-specific summary that names the actual levers
+    # the PBM controls instead of a generic template. The previous
+    # version said "PBM controls most of the economic and governance
+    # levers" on every PBM-controlled contract — true but useless.
+    pbm_lever_names = [str(item.get("lever", "")).strip() for item in pbm_controlled if item.get("lever")]
+    shared_lever_names = [str(item.get("lever", "")).strip() for item in shared if item.get("lever")]
+
     if pbm_ratio >= 0.8:
         label = "PBM-controlled"
         level = "high"
-        summary = "PBM controls most of the economic and governance levers, so leakage estimates should be read as consequences of structural control rather than isolated clause defects."
+        summary = f"PBM controls {', '.join(pbm_lever_names)} — {len(pbm_controlled)} of {total} core levers."
     elif pbm_ratio >= 0.4:
         label = "Mixed control"
         level = "moderate"
-        summary = "Control is split, but the PBM still holds enough leverage to influence pricing, rebates, or specialty economics without full employer verification."
+        pbm_part = f"PBM controls {', '.join(pbm_lever_names)}" if pbm_lever_names else "PBM controls some levers"
+        shared_part = f"; {', '.join(shared_lever_names)} are shared" if shared_lever_names else ""
+        summary = f"{pbm_part}{shared_part}."
     else:
         label = "Shared / employer-leaning"
         level = "low"
-        summary = "Core economic levers are not concentrated solely with the PBM, reducing structural leakage risk."
+        summary = f"Most levers are shared or employer-controlled ({', '.join(shared_lever_names + [str(item.get('lever', '')) for item in control_map if str(item.get('controller', '')).lower() not in ('pbm', 'shared')])})."
 
     return {
         "label": label,
@@ -1292,18 +1301,24 @@ def _structural_risk_override_for(analysis: dict) -> dict:
 
     driver_labels = [TERM_TITLES.get(key, key.replace("_", " ")) for key in severe_tier1_keys]
 
+    # Build contract-specific rationale that names the actual drivers
+    # instead of generic template text like "Multiple Tier 1 economics
+    # and control failures outweigh any secondary employer-friendly
+    # terms" which is the same on every contract.
+    drivers_text = ", ".join(driver_labels) if driver_labels else ""
+
     floor = 0
     level = "low"
-    rationale = "No structural override triggered."
+    rationale = "No structural override triggered — the weighted score reflects the contract accurately."
 
     if len(severe_tier1_keys) >= 4:
         floor = 88
         level = "high"
-        rationale = "Multiple Tier 1 economics and control failures outweigh any secondary employer-friendly terms."
+        rationale = f"{drivers_text} are all severely PBM-favorable, outweighing any secondary employer-friendly terms."
     elif len(severe_tier1_keys) >= 3:
         floor = 82
         level = "high"
-        rationale = "Three or more Tier 1 drivers are materially PBM-favorable, so the contract should not read as balanced."
+        rationale = f"{drivers_text} are materially PBM-favorable, so the contract should not read as balanced."
     elif (
         penalties.get("eligible_rebate_definition", 0) >= 0.85
         and penalties.get("spread_pricing", 0) >= 0.85
@@ -1311,11 +1326,11 @@ def _structural_risk_override_for(analysis: dict) -> dict:
     ):
         floor = 78
         level = "high"
-        rationale = "Rebate leakage, spread pricing, and limited audit rights combine into a structurally PBM-favorable deal."
+        rationale = f"{TERM_TITLES.get('eligible_rebate_definition', 'Rebate definition')}, {TERM_TITLES.get('spread_pricing', 'spread pricing')}, and limited audit rights combine into a structurally PBM-favorable deal."
     elif len(severe_tier1_keys) >= 2:
         floor = 70
         level = "moderate"
-        rationale = "Two Tier 1 economics/control failures create a contract structure that is more adverse than an equal-weight score suggests."
+        rationale = f"{drivers_text} create a contract structure that is more adverse than an equal-weight score suggests."
 
     return {
         "triggered": floor > 0,

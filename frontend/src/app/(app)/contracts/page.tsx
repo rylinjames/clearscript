@@ -245,21 +245,6 @@ interface BenchmarkObservation {
   supporting_detail?: string | null;
 }
 
-// ClearScript peer benchmark for self-insured employer PBM contracts.
-// Numbers reflect the typical contract distribution we see in the
-// 1,000-10,000 life self-insured segment: median deal scores cluster
-// in the high-40s because most off-the-shelf PBM contracts retain
-// spread, narrow rebate definitions, and lock specialty channel.
-// Surfaced as a comparison anchor on the Deal Score and Clause Balance
-// cards so users see "62 / 100, above the typical 47" instead of a
-// raw score with no reference point.
-const PEER_BENCHMARK = {
-  deal_score_median: 47,
-  employer_favorable_clauses_median: 1,
-  total_clauses_typical: 7,
-  sample_label: "self-insured PBM contracts (1k-10k lives)",
-};
-
 const analyzeCategories = [
   { icon: DollarSign, label: "Rebate Terms", description: "Passthrough guarantees, retention percentages" },
   { icon: BarChart3, label: "Spread Pricing", description: "Ingredient cost vs. plan charge provisions" },
@@ -1449,8 +1434,6 @@ function ContractsPageInner() {
           */}
           {(() => {
             const dealScore = weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0));
-            const delta = dealScore - PEER_BENCHMARK.deal_score_median;
-            const direction = delta > 0 ? "above" : delta < 0 ? "below" : "in line with";
             return (
               <div className={`rounded-xl border-2 p-6 mb-4 ${riskLevelStyles(weightedAssessment?.risk_level)}`}>
                 <div className="flex items-start gap-6 flex-wrap">
@@ -1464,9 +1447,11 @@ function ContractsPageInner() {
                   <div className="flex-1 min-w-0 pt-1">
                     <p className="text-base font-semibold">{formatRiskLevel(weightedAssessment?.risk_level)} risk structure</p>
                     <p className="text-sm opacity-90 mt-1 leading-relaxed">
-                      {Math.abs(delta)} pts {direction} the ClearScript median of {PEER_BENCHMARK.deal_score_median} for {PEER_BENCHMARK.sample_label}.
-                      {delta < -10 && " This contract sits in the bottom quartile of self-insured PBM deals we benchmark."}
-                      {delta > 10 && " This contract sits in the top quartile of self-insured PBM deals we benchmark."}
+                      {dealScore >= 70
+                        ? "This contract's core economic and governance terms are closer to employer-favorable benchmarks."
+                        : dealScore >= 40
+                        ? "This contract has a mix of employer-favorable and PBM-favorable terms. Focus renegotiation on the Tier 1 economics."
+                        : "This contract's rebate, pricing, specialty, and audit terms are heavily PBM-favorable. The redlines below are the priority."}
                     </p>
                   </div>
                 </div>
@@ -1509,8 +1494,7 @@ function ContractsPageInner() {
                 {complianceCount!.good} of {complianceCount!.good + complianceCount!.warning + complianceCount!.critical} employer-favorable
               </p>
               <p className="text-[11px] mt-1 leading-snug opacity-90">
-                Typical: {PEER_BENCHMARK.employer_favorable_clauses_median} of {PEER_BENCHMARK.total_clauses_typical}.
-                {" "}{complianceCount!.warning} balanced; {complianceCount!.critical} PBM-favorable.
+                {complianceCount!.warning} balanced; {complianceCount!.critical} PBM-favorable.
               </p>
             </div>
           </div>

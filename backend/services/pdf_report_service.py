@@ -44,16 +44,6 @@ GRAY_500 = colors.HexColor("#71717a")
 GRAY_700 = colors.HexColor("#3f3f46")
 GRAY_900 = colors.HexColor("#18181b")
 
-# ClearScript peer benchmark — must stay in sync with frontend
-# PEER_BENCHMARK constant in contracts/page.tsx. Numbers reflect the
-# typical contract distribution we see in the 1k-10k life self-insured
-# segment: median deal scores cluster in the high-40s because most
-# off-the-shelf PBM contracts retain spread, narrow rebate definitions,
-# and lock specialty channel.
-PEER_BENCHMARK = {
-    "deal_score_median": 47,
-    "sample_label": "self-insured PBM contracts (1k-10k lives)",
-}
 
 
 def _format_usd_short(n) -> str:
@@ -448,24 +438,10 @@ def generate_contract_report(
     if control_posture.get("headline"):
         control_text = f"<br/><br/><b>Control posture</b>: {control_posture.get('headline')}. {control_posture.get('summary', '')}"
 
-    # Peer comparison anchor — same numbers as PEER_BENCHMARK on the
-    # frontend so the PDF and live UI agree. Tells the reader where this
-    # contract sits relative to typical self-insured PBM deals.
-    try:
-        peer_delta = int(deal_score) - PEER_BENCHMARK["deal_score_median"]
-    except (TypeError, ValueError):
-        peer_delta = 0
-    peer_direction = "above" if peer_delta > 0 else "below" if peer_delta < 0 else "in line with"
-    peer_anchor_text = (
-        f"<font color='#71717a'>{abs(peer_delta)} pts {peer_direction} ClearScript median of "
-        f"{PEER_BENCHMARK['deal_score_median']} for {PEER_BENCHMARK['sample_label']}.</font>"
-    )
-
     score_data = [[
         Paragraph(f"{deal_score}", ParagraphStyle("Score", fontName="Helvetica-Bold", fontSize=40, textColor=score_color, alignment=TA_CENTER)),
         Paragraph(
-            f"<b>PBM Deal Score: {deal_score}/100</b><br/>"
-            f"{peer_anchor_text}<br/><br/>"
+            f"<b>PBM Deal Score: {deal_score}/100</b><br/><br/>"
             f"Weighted risk score: {weighted_risk} ({risk_label}). "
             f"This contract has {len(high_flags)} high-severity and {len(medium_flags)} medium-severity flags, "
             f"but the score is weighted toward rebate structure, spread pricing, specialty control, and audit rights."
