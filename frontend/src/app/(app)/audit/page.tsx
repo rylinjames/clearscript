@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { usePageTitle } from "@/components/PageTitle";
 import { useToast } from "@/components/Toast";
-import { Mail, Loader2, Copy, Download, Check, ClipboardList, FileText, AlertTriangle, BookOpen, Scale, Send } from "lucide-react";
+import { Mail, Loader2, Copy, Download, Check, ClipboardList, FileText, AlertTriangle, BookOpen, Scale, Send, ArrowLeft } from "lucide-react";
 import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 
 const auditTypeDescriptions = {
@@ -308,16 +309,35 @@ export default function AuditPage() {
     toast("Audit letter downloaded", "success");
   };
 
+  // Resolve the contract id to use for the "Back to Plan Intelligence"
+  // link. Prefer the explicit user pick, fall back to the first
+  // available contract (most recent), so the link still works in the
+  // common deep-link-from-contracts-page flow.
+  const backLinkContractId = selectedContractId !== null
+    ? selectedContractId
+    : (contracts[0]?.id ?? null);
+
   return (
     <div className="animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-          <Mail className="w-7 h-7 text-primary-600" />
-          Audit Request Generator
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Generate a professional audit request letter based on your contract terms
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+            <Mail className="w-7 h-7 text-primary-600" />
+            Audit Request Generator
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Generate a professional audit request letter based on your contract terms
+          </p>
+        </div>
+        {backLinkContractId !== null && (
+          <Link
+            href={`/contracts?contract_id=${backLinkContractId}`}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Plan Intelligence
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

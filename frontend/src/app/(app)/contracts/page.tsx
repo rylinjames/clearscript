@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
 import StatusBadge from "@/components/StatusBadge";
@@ -27,6 +28,8 @@ import {
   Copy,
   Check,
   Share2,
+  History,
+  Clock,
 } from "lucide-react";
 
 interface ExtractedTerm {
@@ -233,6 +236,14 @@ interface StructuralRiskOverride {
   drivers?: string[];
   headline: string;
   rationale: string;
+}
+
+interface PastContract {
+  id: number;
+  filename: string;
+  analysis_date: string | null;
+  deal_score: number | null;
+  risk_level: string | null;
 }
 
 interface BenchmarkObservation {
@@ -472,8 +483,30 @@ function formatRiskLevel(level?: string) {
   return (level || "moderate").replace(/^\w/, (c) => c.toUpperCase());
 }
 
+// Wrapped so the inner component can use useSearchParams. Next.js
+// App Router requires useSearchParams to be inside a Suspense boundary
+// or it bails out of static rendering for the whole page.
 export default function ContractsPage() {
+  return (
+    <Suspense fallback={<div className="animate-fade-in p-8"><div className="h-6 w-48 bg-gray-100 rounded animate-pulse" /></div>}>
+      <ContractsPageInner />
+    </Suspense>
+  );
+}
+
+function ContractsPageInner() {
   usePageTitle("Contract Intake");
+  const searchParams = useSearchParams();
+  // Deep link: /contracts?contract_id=N loads that persisted analysis
+  // on mount instead of forcing the user to re-upload. Used by the
+  // "Back to Plan Intelligence" link on the audit page so users can
+  // return to the analysis they came from without rescanning.
+  const deepLinkContractId = (() => {
+    const raw = searchParams.get("contract_id");
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
   const [loading, setLoading] = useState(false);
   const [terms, setTerms] = useState<ExtractedTerm[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -504,6 +537,18 @@ export default function ContractsPage() {
   // Once dismissed, we don't re-render it for the rest of this page
   // session. Reset on every fresh upload (handled in handleFileUpload).
   const [stickyClaimsDismissed, setStickyClaimsDismissed] = useState(false);
+
+  // Recent uploaded contracts list — populates the "Recent Analyses"
+  // picker so users can revisit prior scans without re-uploading. The
+  // backend persists every analysis to the contracts table, so this
+  // is just a thin client of /api/contracts/list.
+  const [pastContracts, setPastContracts] = useState<PastContract[]>([]);
+  const [pastContractsLoading, setPastContractsLoading] = useState(true);
+  const [loadingPastId, setLoadingPastId] = useState<number | null>(null);
+  // Set when the current analysis on screen was loaded from the DB
+  // rather than from a fresh upload. Used to show a "Loaded from
+  // history" badge so the user knows they're looking at a prior scan.
+  const [loadedFromHistoryId, setLoadedFromHistoryId] = useState<number | null>(null);
   const [contractFilename, setContractFilename] = useState<string>("contract");
   // SQLite/Postgres primary key for the most recently uploaded contract,
   // returned by /api/contracts/upload. Used to deep-link the audit-letter
@@ -627,6 +672,95 @@ export default function ContractsPage() {
       );
     }
   };
+
+  // Fetch the recent-contracts list once on mount. Refreshed after
+  // every successful upload so newly-analyzed contracts appear in the
+  // picker without a page reload.
+  const refreshPastContracts = async () => {
+    setPastContractsLoading(true);
+    try {
+      const res = await fetch("/api/contracts/list");
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = Array.isArray(data?.contracts) ? data.contracts : [];
+      setPastContracts(list);
+    } catch {
+      /* picker is optional — silently leave the list empty */
+    } finally {
+      setPastContractsLoading(false);
+    }
+  };
+
+  // Load a previously-analyzed contract from the DB and populate the
+  // page state as if it had just been uploaded. Drives both the
+  // "Recent Analyses" picker click handler AND the ?contract_id=N
+  // deep link from the audit page's "Back to Plan Intelligence" link.
+  const loadContractFromHistory = async (id: number) => {
+    setLoadingPastId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/contracts/${id}`);
+      if (!res.ok) {
+        let detail = `Could not load contract id=${id}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.detail) detail = String(errJson.detail);
+        } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      const contract = data?.contract;
+      if (!contract || !contract.analysis) {
+        throw new Error("This contract has no saved analysis to load.");
+      }
+      // Reset everything as if it were a new upload, then populate
+      // from the persisted analysis. processResponse expects the same
+      // shape /api/contracts/upload returns: { id, filename, analysis }.
+      setTerms(null);
+      setAuditChecklist(null);
+      setRebateDefinition(null);
+      setDisputeResolution(null);
+      setStatisticalExtrapolation(null);
+      setPlanBenefits(null);
+      setPlanDocType(null);
+      setCrossRef(null);
+      setStickyClaimsDismissed(false);
+      setSourceText(null);
+      setContractFilename(contract.filename || "contract");
+      processResponse({
+        id: contract.id,
+        filename: contract.filename,
+        analysis: contract.analysis,
+      });
+      setLoadedFromHistoryId(contract.id);
+      // Scroll to the top of the analysis so the user sees the
+      // Deal Diagnosis hero immediately.
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load this contract from history");
+    } finally {
+      setLoadingPastId(null);
+    }
+  };
+
+  // Mount-time effects: load the recent-contracts list, and if the URL
+  // has a ?contract_id=N parameter, immediately deep-link to that
+  // contract instead of showing the empty state.
+  useEffect(() => {
+    refreshPastContracts();
+  }, []);
+
+  useEffect(() => {
+    if (deepLinkContractId !== null) {
+      loadContractFromHistory(deepLinkContractId);
+    }
+    // We deliberately do NOT depend on loadContractFromHistory here —
+    // it would re-fetch on every state change. The deep link is a
+    // one-shot on mount when the URL parameter is present.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkContractId]);
 
   const handlePlanDocUpload = async (file: File) => {
     setPlanLoading(true);
@@ -759,6 +893,7 @@ export default function ContractsPage() {
     setDisputeResolution(null);
     setStatisticalExtrapolation(null);
     setStickyClaimsDismissed(false);
+    setLoadedFromHistoryId(null);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -781,6 +916,8 @@ export default function ContractsPage() {
       }
       const data = await res.json();
       processResponse(data);
+      // Refresh the recent-contracts picker so the new upload appears.
+      refreshPastContracts();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -797,6 +934,7 @@ export default function ContractsPage() {
     setRebateDefinition(null);
     setDisputeResolution(null);
     setStatisticalExtrapolation(null);
+    setLoadedFromHistoryId(null);
 
     const blob = new Blob([SAMPLE_CONTRACT_TEXT], { type: "text/plain" });
     const file = new File([blob], "sample-pbm-contract.txt", { type: "text/plain" });
@@ -818,6 +956,7 @@ export default function ContractsPage() {
       }
       const data = await res.json();
       processResponse(data);
+      refreshPastContracts();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -925,6 +1064,83 @@ export default function ContractsPage() {
         </div>
       </div>
 
+      {/* ═══ Recent Analyses picker ═══
+          Lists every previously-analyzed contract from the persisted
+          contracts table (/api/contracts/list). Each row is a one-click
+          shortcut back into a prior analysis — clicking it fetches the
+          full analysis from /api/contracts/{id} and re-populates the
+          page state as if the contract had just been uploaded. Solves
+          the "I clicked Draft Audit Letter and now I can't get back
+          to my analysis without rescanning" problem. Always rendered
+          when there are past contracts, regardless of whether a fresh
+          analysis is currently on screen, so users can switch between
+          contracts freely.
+      */}
+      {pastContracts.length > 0 && !loading && (
+        <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-primary-600" />
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Recent Analyses</h3>
+            </div>
+            <span className="text-xs text-gray-500">
+              {pastContracts.length} analyzed contract{pastContracts.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {pastContractsLoading ? (
+              <div className="text-xs text-gray-500 py-2">Loading...</div>
+            ) : (
+              pastContracts.map((c) => {
+                const isCurrent = loadedFromHistoryId === c.id;
+                const isLoading = loadingPastId === c.id;
+                const dateStr = c.analysis_date ? c.analysis_date.split(" ")[0] : "unknown date";
+                const scoreColor =
+                  c.deal_score === null ? "bg-gray-100 text-gray-700"
+                  : c.deal_score >= 60 ? "bg-emerald-100 text-emerald-700"
+                  : c.deal_score >= 30 ? "bg-amber-100 text-amber-700"
+                  : "bg-red-100 text-red-700";
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => loadContractFromHistory(c.id)}
+                    disabled={isLoading || loading}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors ${
+                      isCurrent
+                        ? "bg-blue-50 border-blue-200 cursor-default"
+                        : "bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+                    } disabled:opacity-50`}
+                  >
+                    <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{c.filename}</p>
+                      <p className="text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5">
+                        <Clock className="w-2.5 h-2.5" />
+                        {dateStr}
+                        {c.risk_level && <span className="capitalize">· {c.risk_level} risk</span>}
+                      </p>
+                    </div>
+                    {c.deal_score !== null && (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${scoreColor}`}>
+                        {c.deal_score}/100
+                      </span>
+                    )}
+                    {isCurrent && (
+                      <span className="text-[11px] font-semibold text-blue-700 px-2 py-0.5 bg-white border border-blue-200 rounded">Viewing</span>
+                    )}
+                    {isLoading && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
+            Click any contract to reopen its full analysis without re-uploading.
+          </p>
+        </div>
+      )}
+
       {sourceText && !loading && (
         <div className="bg-white rounded-xl border border-gray-200 mb-6 overflow-hidden">
           <button
@@ -986,7 +1202,15 @@ export default function ContractsPage() {
           <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600 mb-2">Deal Diagnosis</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600">Deal Diagnosis</p>
+                  {loadedFromHistoryId !== null && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                      <History className="w-2.5 h-2.5" />
+                      Loaded from history
+                    </span>
+                  )}
+                </div>
                 <h2 className="text-2xl font-bold text-gray-900 leading-tight">
                   {dealDiagnosis || "PBM contract analysis complete"}
                 </h2>
