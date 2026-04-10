@@ -155,6 +155,19 @@ async def generate_audit(request: AuditRequest = None):
         )
     audit_type_info = AUDIT_TYPE_INFO[audit_type]
 
+    # Surface data provenance to the frontend so the user can see exactly
+    # what the letter was grounded in. Without this, the user has no way
+    # to know whether the letter referenced their actual contract findings
+    # or was written generically — which is the difference between a
+    # credible draft and a form letter.
+    provenance = {
+        "has_analyzed_contract": has_real_contract,
+        "has_real_claims_data": bool(findings),
+        "contract_filename": contract_data.get("analyzed_contract_filename"),
+        "contract_id": contract_data.get("analyzed_contract_id"),
+        "contract_analysis_date": contract_data.get("analyzed_contract_date"),
+    }
+
     return {
         "status": "success",
         "audit_type": audit_type,
@@ -166,4 +179,5 @@ async def generate_audit(request: AuditRequest = None):
         },
         "letter": result.get("letter_text", "") if isinstance(result, dict) else str(result),
         "letter_payload": result,
+        "data_provenance": provenance,
     }

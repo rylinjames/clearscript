@@ -1645,31 +1645,49 @@ async def analyze_disclosure(text: str) -> dict:
 
 AUDIT_LETTER_SYSTEM_PROMPT = """You are a benefits attorney drafting a formal audit request letter from an employer plan sponsor to their PBM.
 
-Generate a professional audit request letter that:
-1. Cites specific DOL rule provisions and ERISA fiduciary obligations
-2. References findings from the contract analysis ONLY when they are present in the input — never invent or fabricate findings
-3. Specifies exact data the employer is legally entitled to receive
-4. Includes a 10-business-day response deadline
-5. Notes that failure to comply may constitute a fiduciary breach
+The letter must be structured into discrete, defensible sections — NOT a freeform wall of text. The frontend will render each section as its own card so the plan sponsor can review, edit, and copy each section independently.
 
 ABSOLUTE RULES — DO NOT VIOLATE THESE:
 
 - DO NOT invent or fabricate any specific dollar amounts, percentages, spread figures, rebate amounts, reconciliation totals, claim counts, drug names, NDC codes, pharmacy NPIs, or any numeric figure that is not literally present in the inputs.
-- DO NOT pretend to have findings the inputs do not contain. If the input has no analyzed_contract, do NOT claim "your contract specifies X percent rebate passthrough" or similar — instead REQUEST that information.
-- DO NOT claim a reconciliation has been performed if no claims data is present in the inputs. If `_data_provenance.has_real_claims_data` is false, the letter must REQUEST claims data, not assert findings about it.
+- DO NOT pretend to have findings the inputs do not contain. If the input has no analyzed_contract, do NOT claim "your contract specifies X percent rebate passthrough" — instead REQUEST that information.
+- DO NOT claim a reconciliation has been performed if no claims data is present. If `_data_provenance.has_real_claims_data` is false, the letter must REQUEST claims data, not assert findings about it.
 - DO NOT include placeholder numbers like "$X", "[amount]", or fabricated "industry averages" presented as the employer's actual figures.
-- If the inputs say a category has no data, write that section as a forward-looking REQUEST ("we are requesting documentation of...") rather than as a backward-looking ASSERTION ("your records show...").
+- If the inputs say a category has no data, write the corresponding demand as a forward-looking REQUEST ("we are requesting documentation of...") rather than as a backward-looking ASSERTION ("your records show...").
 - The `_data_provenance` field in the input tells you what is grounded in real data. Honor it.
 
-When in doubt, write the letter generically. A letter that requests data is professionally appropriate. A letter that fabricates findings is malpractice.
+WHEN IN DOUBT: write a letter that REQUESTS data. A letter that requests data is professionally appropriate. A letter that fabricates findings is malpractice.
 
-Return JSON with:
+ANCHORING TO THE CONTRACT: When the analyzed_contract input contains a `redline_suggestions`, `top_risks`, `audit_implication`, or `contract_identification` block, every demand you make should reference those findings explicitly. If a redline cites "Section 3.4 — Spread Pricing" the corresponding demand should say "regarding Section 3.4 of the Agreement..." This anchoring is the difference between a credible audit request and an AI-generated form letter.
+
+Return JSON with EXACTLY this shape:
+
 {
-  "letter_text": str (full formatted letter),
-  "key_demands": [str],
-  "legal_citations": [str],
-  "deadline": str
+  "subject_line": "Formal Audit Request — [PBM Name] PBM Services Agreement",
+  "recipient_block": "Recipient name and title\\nPBM legal department\\nAddress",
+  "opening_paragraph": "1-2 sentence professional opening identifying the parties and the contract under review",
+  "background_paragraph": "1 paragraph (3-5 sentences) summarizing the basis for the audit request, citing specific contract sections where possible",
+  "specific_demands": [
+    {
+      "demand": "1-2 sentence specific data or document the plan sponsor is requesting",
+      "contract_section": "Section number from the analyzed contract this demand relates to, or null if generic",
+      "data_requested": "Plain-English description of the data category (e.g. 'Claim-level pharmacy reimbursement records')"
+    }
+  ],
+  "legal_authority": [
+    {
+      "citation": "Specific statute, regulation, or model contract section (e.g. 'ERISA §404(a)(1)', 'CAA 2021 §201', 'DOL Transparency Rule 29 CFR 2520.408b-2(c)(1)(iv)')",
+      "explanation": "1 sentence explaining how this authority applies to the specific demands above"
+    }
+  ],
+  "response_deadline_paragraph": "1-2 sentence deadline statement specifying business days and the consequences of non-response",
+  "closing_paragraph": "1 sentence professional closing",
+  "signature_block": "Signature line(s) — leave name placeholder as 'Plan Sponsor Authorized Representative'",
+  "deadline_iso": "YYYY-MM-DD calculated as 10 business days from today",
+  "letter_text": "The full assembled letter as a single string with all sections concatenated in order, ready to copy/paste into Word. Include section spacing but NO markdown."
 }
+
+Generate between 4 and 8 specific_demands and between 2 and 5 legal_authority entries. Generate fewer if the input data does not support more.
 """
 
 async def generate_audit_letter(contract_data: dict, findings: dict) -> dict:
@@ -1678,10 +1696,10 @@ async def generate_audit_letter(contract_data: dict, findings: dict) -> dict:
     """
     result = await _generate(
         AUDIT_LETTER_SYSTEM_PROMPT,
-        f"Generate an audit request letter based on these findings:\n\n"
-        f"Contract Analysis:\n{json.dumps(contract_data, indent=2)[:4000]}\n\n"
-        f"Audit Findings:\n{json.dumps(findings, indent=2)[:4000]}",
-        16000,
+        f"Generate an audit request letter based on these inputs:\n\n"
+        f"Contract Analysis:\n{json.dumps(contract_data, indent=2)[:6000]}\n\n"
+        f"Audit Findings:\n{json.dumps(findings, indent=2)[:3000]}",
+        6000,
     )
     return json.loads(result)
 
