@@ -15,7 +15,17 @@ import {
   List as ListIcon,
   ChevronLeft,
   ChevronRight,
+  FileText,
+  Clock,
 } from "lucide-react";
+
+interface ContractListItem {
+  id: number;
+  filename: string;
+  analysis_date: string | null;
+  deal_score: number | null;
+  risk_level: string | null;
+}
 
 interface ComplianceItem {
   id: string;
@@ -79,11 +89,38 @@ export default function CompliancePage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "calendar">("list");
 
+  // Contract picker state
+  const [contracts, setContracts] = useState<ContractListItem[]>([]);
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
+
+  // Fetch contract list on mount for the picker
+  useEffect(() => {
+    const fetchContracts = async () => {
+      try {
+        const res = await fetch("/api/contracts/list");
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: ContractListItem[] = Array.isArray(data?.contracts) ? data.contracts : [];
+        setContracts(list);
+        // Auto-select the most recent contract if available
+        if (list.length > 0 && selectedContractId === null) {
+          setSelectedContractId(list[0].id);
+        }
+      } catch { /* optional */ }
+    };
+    fetchContracts();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch deadlines whenever the selected contract changes
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/compliance/deadlines");
+        const url = selectedContractId
+          ? `/api/compliance/deadlines?contract_id=${selectedContractId}`
+          : "/api/compliance/deadlines";
+        const res = await fetch(url);
         if (!res.ok) {
           let detail = `Compliance deadlines failed with status ${res.status}`;
           try {
@@ -103,7 +140,7 @@ export default function CompliancePage() {
       }
     };
     fetchData();
-  }, []);
+  }, [selectedContractId]);
 
   // Group items by category for the list view so the user sees them by
   // *type* (federal annual filing, contract-derived, etc.) instead of
@@ -153,9 +190,8 @@ export default function CompliancePage() {
             Compliance Tracker
           </h1>
           <p className="text-gray-500 mt-1 max-w-2xl">
-            An educational reference for the federal and contract-driven obligations
-            every self-insured plan sponsor needs to track. Each item explains what
-            it is, why it matters, and what to do — not just when it is due.
+            Federal obligations every self-insured plan sponsor needs to track, plus
+            contract-specific deadlines from the contract you select below.
           </p>
         </div>
         <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm self-start">
@@ -180,7 +216,44 @@ export default function CompliancePage() {
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {/* Contract picker — select which contract's deadlines to show */}
+      {contracts.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-4 mb-6">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <FileText className="w-4 h-4 text-primary-600" />
+              <label className="text-sm font-semibold text-gray-900">Contract</label>
+            </div>
+            <select
+              value={selectedContractId ?? ""}
+              onChange={(e) => setSelectedContractId(e.target.value ? Number(e.target.value) : null)}
+              className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-600 focus:border-primary-600 outline-none bg-white"
+            >
+              <option value="">Federal deadlines only (no contract selected)</option>
+              {contracts.map((c) => {
+                const dateStr = c.analysis_date ? c.analysis_date.split(" ")[0] : "";
+                return (
+                  <option key={c.id} value={c.id}>
+                    {c.filename} ({dateStr}{c.deal_score !== null ? ` · score ${c.deal_score}` : ""})
+                  </option>
+                );
+              })}
+            </select>
+            {selectedContractId && (
+              <p className="text-xs text-gray-500 w-full mt-1">
+                Showing this contract&apos;s notice deadline, RFP start date, and term expiration alongside federal deadlines.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+          <p className="text-sm text-gray-500">Loading compliance deadlines...</p>
+        </div>
+      ) : items.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
           No compliance items to display.
         </div>

@@ -1,5 +1,6 @@
 """Feature 10: Compliance Deadline Tracker"""
 
+from typing import Optional
 from fastapi import APIRouter
 from services.data_service import generate_compliance_deadlines
 
@@ -7,20 +8,14 @@ router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
 
 @router.get("/deadlines")
-async def compliance_deadlines():
+async def compliance_deadlines(contract_id: Optional[int] = None):
     """
-    Returns all regulatory deadlines as rich, educational items.
-
-    Each deadline includes the statutory basis, what-it-is / why-it-matters
-    explanations, action items, and a `timing_phase` for grouping in the
-    UI. Contract-derived deadlines (renegotiation windows, audit response
-    windows) are pulled from contracts the user has actually uploaded.
-
-    The legacy `summary` block is preserved for backward compatibility,
-    using the new `timing_phase` values mapped to the older bucket names
-    so old clients keep working while new clients render the rich format.
+    Returns regulatory deadlines. If contract_id is provided, includes
+    that contract's actual critical dates (notice deadline, RFP start,
+    term end) from the persisted analysis. Otherwise returns only the
+    federal statutory items.
     """
-    deadlines = generate_compliance_deadlines()
+    deadlines = generate_compliance_deadlines(contract_id=contract_id)
 
     # Legacy summary buckets — map the new neutral phase names to the
     # old labels so the existing summary block keeps the same shape.

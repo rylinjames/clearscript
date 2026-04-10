@@ -660,126 +660,147 @@ def _static_compliance_items() -> List[Dict[str, Any]]:
     ]
 
 
-def _derive_contract_deadlines() -> List[Dict[str, Any]]:
+def _derive_contract_deadlines(contract_id: int | None = None) -> List[Dict[str, Any]]:
     """
-    Build compliance items derived from contracts the user has actually
-    uploaded — renewal-window milestones, audit-letter deadlines, and so on.
+    Build compliance items from a specific contract's critical dates.
 
-    Returns an empty list if no contracts have been uploaded yet, so the
-    Compliance Tracker only shows information the user themselves provided
-    rather than guessing.
+    Uses the actual notice_deadline_date, rfp_start_recommended_date,
+    and current_term_end_date computed by _attach_critical_dates in the
+    AI service — not generic "90 days after analysis" placeholders.
+
+    Returns an empty list if no contract_id is provided or the contract
+    doesn't have critical dates.
     """
+    if contract_id is None:
+        return []
+
     try:
-        from services.db_service import list_contract_analyses
+        from services.db_service import load_contract_analysis_by_id
     except Exception:
         return []
 
+    contract = load_contract_analysis_by_id(contract_id)
+    if not contract or not isinstance(contract.get("analysis"), dict):
+        return []
+
+    analysis = contract["analysis"]
+    cid = analysis.get("contract_identification", {})
+    if not isinstance(cid, dict):
+        return []
+
+    filename = contract.get("filename") or "Uploaded contract"
+    pbm_name = cid.get("pbm_name") or "PBM"
+    sponsor_name = cid.get("plan_sponsor_name") or "Plan Sponsor"
     items: List[Dict[str, Any]] = []
-    contracts = list_contract_analyses(limit=20)
 
-    for c in contracts:
-        analysis_date_raw = c.get("analysis_date")
-        if not analysis_date_raw:
-            continue
-        try:
-            # SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" in UTC
-            analysis_dt = datetime.strptime(analysis_date_raw, "%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            try:
-                analysis_dt = datetime.fromisoformat(analysis_date_raw)
-            except (ValueError, TypeError):
-                continue
-
-        filename = c.get("filename") or "Uploaded contract"
-
-        # Item 1: 90-day check-in milestone — when the renegotiation window
-        # for an HR 7148 transition typically opens.
+    # Notice deadline — the most critical date in the contract
+    notice_deadline = cid.get("notice_deadline_date")
+    notice_days = cid.get("termination_notice_days")
+    if notice_deadline:
         items.append({
-            "id": f"CONTRACT-{c['id']}-RENEG-WINDOW",
-            "name": f"Begin HR 7148 renegotiation review for {filename}",
-            "category": "Contract-Derived — Renegotiation Window",
-            "due_date": (analysis_dt + timedelta(days=90)).strftime("%Y-%m-%d"),
-            "recurrence": "One-time, 90 days after the contract was first analyzed",
+            "id": f"CONTRACT-{contract_id}-NOTICE-DEADLINE",
+            "name": f"Termination notice deadline — {pbm_name}",
+            "category": "Contract — Notice Deadline",
+            "due_date": notice_deadline,
+            "recurrence": "Per contract term",
             "what_it_is": (
-                "A self-imposed milestone to revisit this contract 90 days "
-                "after the initial ClearScript analysis. By that point you "
-                "should have decided whether to renegotiate the highest-risk "
-                "provisions before the next renewal cycle."
+                f"The last day to give {pbm_name} written notice of non-renewal "
+                f"without triggering auto-renewal. The contract requires "
+                f"{notice_days or 'N/A'} days' advance notice before the current term expires."
             ),
             "why_it_matters": (
-                "The HR 7148 effective dates are fixed and the negotiation "
-                "leverage is highest when you raise concerns proactively, "
-                "not at the renewal table."
+                "Missing this deadline means the contract auto-renews on the PBM's terms. "
+                "The plan sponsor loses all negotiating leverage until the next renewal window."
             ),
-            "when_it_applies": (
-                "Once, 90 days after the first ClearScript analysis of this "
-                "specific PBM contract."
-            ),
-            "who_acts": "Plan sponsor (typically with broker or ERISA counsel)",
-            "statutory_basis": "Internal milestone driven by HR 7148 effective dates",
+            "when_it_applies": f"Before {notice_deadline}",
+            "who_acts": f"{sponsor_name} must deliver written notice to {pbm_name}",
+            "statutory_basis": f"Contract Section — Termination Provisions ({notice_days}-day notice requirement)",
             "action_items": [
-                "Review the deal score and top risks from the original ClearScript analysis.",
-                "Decide which 2–3 provisions warrant a written amendment request before the next renewal.",
-                "Send a formal redline request to the PBM citing the analysis findings.",
-                "Document the PBM's response (or non-response) in writing.",
+                f"Prepare written notice of non-renewal addressed to {pbm_name}.",
+                "Have ERISA counsel review the notice language before sending.",
+                "Send via certified mail with return receipt requested.",
+                "Calendar a follow-up 5 business days after sending to confirm receipt.",
             ],
             "educational_summary": (
-                "Contract analysis is only useful if it leads to action. "
-                "The 90-day window is when the recommendations from the "
-                "initial analysis are still fresh and the PBM still has "
-                "time to respond before the next renewal cycle."
+                "The notice deadline is the single most important date in the contract. "
+                "Everything else — redlines, audit requests, RFP processes — is moot if "
+                "the contract auto-renews because you missed the notice window."
             ),
             "contract_derived": True,
-            "source_contract_id": c.get("id"),
+            "source_contract_id": contract_id,
             "source_contract_filename": filename,
-            "source_contract_analysis_date": analysis_date_raw,
         })
 
-        # Item 2: Audit letter response deadline — if the user has already
-        # generated an audit letter, the 10-business-day clock from the new
-        # DOL transparency rule starts running. We don't know if they sent
-        # it, so we treat the analysis date as the proxy.
-        # 10 business days ≈ 14 calendar days
+    # RFP start recommendation
+    rfp_start = cid.get("rfp_start_recommended_date")
+    if rfp_start:
         items.append({
-            "id": f"CONTRACT-{c['id']}-AUDIT-DEADLINE",
-            "name": f"PBM audit-response window for {filename}",
-            "category": "Contract-Derived — Audit Window",
-            "due_date": (analysis_dt + timedelta(days=14)).strftime("%Y-%m-%d"),
-            "recurrence": "One-time, 10 business days after an audit letter is sent",
+            "id": f"CONTRACT-{contract_id}-RFP-START",
+            "name": f"Begin RFP process — {pbm_name}",
+            "category": "Contract — RFP Timeline",
+            "due_date": rfp_start,
+            "recurrence": "Per contract term",
             "what_it_is": (
-                "Under the DOL transparency rule effective January 30, 2026, "
-                "a PBM must respond to a plan-sponsor audit request within "
-                "ten business days. This item tracks that response window "
-                "for the audit letter associated with this contract."
+                "Recommended date to begin the PBM RFP process. Calculated as "
+                "60 days before the notice deadline to allow time for competitive "
+                "bids, reference checks, and board approval before you need to "
+                "decide whether to renew or terminate."
             ),
             "why_it_matters": (
-                "Failure to respond within the 10-business-day window is "
-                "itself evidence of fiduciary breach and gives the plan "
-                "sponsor strong grounds to escalate, terminate, or pursue "
-                "regulatory complaint."
+                "Starting the RFP late means choosing between the incumbent PBM's "
+                "renewal offer and a rushed, incomplete competitive process. "
+                "Starting 60+ days before the notice deadline gives you real alternatives."
             ),
-            "when_it_applies": (
-                "Triggered when the plan sponsor delivers a written audit "
-                "request. The 14 calendar days approximates the 10 business "
-                "days the rule allows."
-            ),
-            "who_acts": "PBM must respond; plan sponsor enforces",
-            "statutory_basis": "29 CFR 2520.101-2 (DOL transparency rule)",
+            "when_it_applies": f"Before {rfp_start}",
+            "who_acts": f"{sponsor_name}, typically with broker support",
+            "statutory_basis": "Best practice — 60 days pre-notice deadline",
             "action_items": [
-                "Confirm the audit letter was actually delivered (certified mail recommended).",
-                "Calendar the 10-business-day deadline.",
-                "Log every interim communication from the PBM during the window.",
-                "If the deadline passes without a complete response, escalate immediately to ERISA counsel.",
+                "Issue RFP to 3-5 PBMs with the ClearScript redline language as the baseline.",
+                "Set a 3-week response window for PBM proposals.",
+                "Schedule finalist presentations 2 weeks after responses are due.",
+                f"Make the renew/terminate decision at least 5 business days before the notice deadline ({notice_deadline or 'TBD'}).",
             ],
             "educational_summary": (
-                "The 10-day window is the most concrete enforcement hook "
-                "any plan sponsor has gained in years. The clock starts on "
-                "delivery — not on the date you want to start counting from."
+                "The RFP is the leverage. Even if you intend to renew with the incumbent, "
+                "having competitive bids on the table changes the negotiation dynamic entirely."
             ),
             "contract_derived": True,
-            "source_contract_id": c.get("id"),
+            "source_contract_id": contract_id,
             "source_contract_filename": filename,
-            "source_contract_analysis_date": analysis_date_raw,
+        })
+
+    # Current term end date
+    term_end = cid.get("current_term_end_date")
+    if term_end:
+        items.append({
+            "id": f"CONTRACT-{contract_id}-TERM-END",
+            "name": f"Current term expires — {pbm_name}",
+            "category": "Contract — Term Expiration",
+            "due_date": term_end,
+            "recurrence": "Per contract term",
+            "what_it_is": (
+                f"The date the current contract term with {pbm_name} expires. "
+                "If notice was given before the notice deadline, the contract "
+                "terminates on this date. If notice was not given, the contract "
+                "has already auto-renewed."
+            ),
+            "why_it_matters": (
+                "This is the backstop date. By this point the plan sponsor should "
+                "have either (a) terminated and transitioned to a new PBM, or "
+                "(b) renewed with renegotiated terms."
+            ),
+            "when_it_applies": f"Contract expires {term_end}",
+            "who_acts": f"Both {sponsor_name} and {pbm_name}",
+            "statutory_basis": "Contract Section — Term and Termination",
+            "action_items": [
+                "If terminating: confirm transition plan is in place 90 days before this date.",
+                "If renewing: confirm amendment with renegotiated terms is signed.",
+                "Ensure data portability clause is exercised before expiration.",
+                "Archive the contract and ClearScript analysis for compliance records.",
+            ],
+            "contract_derived": True,
+            "source_contract_id": contract_id,
+            "source_contract_filename": filename,
         })
 
     return items
@@ -838,21 +859,20 @@ def _annotate_deadline(d: Dict[str, Any], today: datetime) -> Dict[str, Any]:
     return d
 
 
-def generate_compliance_deadlines() -> List[Dict[str, Any]]:
+def generate_compliance_deadlines(contract_id: int | None = None) -> List[Dict[str, Any]]:
     """
     Build the compliance tracker payload.
 
     Combines:
-      1. Static, statute-driven items every plan sponsor needs to track,
-         each annotated with rich educational metadata.
-      2. Contract-derived items pulled from the contracts the user has
-         actually uploaded — renegotiation windows, audit deadlines.
+      1. Static, statute-driven items every plan sponsor needs to track.
+      2. Contract-derived items from the specific contract's critical
+         dates (notice deadline, RFP start, term end) — only if a
+         contract_id is provided.
 
-    Sorted by `days_until` ascending so the soonest item is first, but
-    the frontend is free to render in calendar or list mode.
+    Sorted by `days_until` ascending so the soonest item is first.
     """
     today = datetime.now()
-    items = _static_compliance_items() + _derive_contract_deadlines()
+    items = _static_compliance_items() + _derive_contract_deadlines(contract_id)
     for item in items:
         _annotate_deadline(item, today)
 
