@@ -30,7 +30,7 @@ export default function DataSourceBanner({ onRefresh, refreshing, error, generat
           <span className={`text-sm font-medium ${status?.custom_data_loaded ? "text-emerald-800" : "text-blue-800"}`}>
             {status?.custom_data_loaded
               ? `Your Uploaded Data (${status.claims_count?.toLocaleString()} claims)`
-              : "Demo analysis based on publicly available sources"}
+              : "No claims data uploaded — analysis will use limited data"}
           </span>
           {generatedBy && (
             <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
@@ -38,7 +38,7 @@ export default function DataSourceBanner({ onRefresh, refreshing, error, generat
                 ? "bg-emerald-100 text-emerald-700"
                 : "bg-amber-100 text-amber-700"
             }`}>
-              {generatedBy === "ai" ? "AI Analysis" : "Demo Analysis"}
+              {generatedBy === "ai" ? "AI Analysis" : "Limited Data"}
             </span>
           )}
         </div>

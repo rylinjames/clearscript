@@ -162,34 +162,7 @@ export default function BenchmarksPage() {
         const data = await res.json();
         setPublicData(data);
       } catch {
-        // Fallback demo data
-        setPublicData({
-          oig_highlights: [
-            "OIG found 40% of rebates go uncollected by plan sponsors due to narrow rebate definitions",
-            "Top 3 PBMs retain an average of $1.3B annually in undisclosed spread",
-            "State-by-state variation: Alabama captures 98% of NDC data, while other states average only 62%",
-            "Specialty drug markups average 23% above acquisition cost in PBM-owned pharmacies",
-            "Mail-order steering adds 15-20% to employer drug spend through hidden spreads",
-          ],
-          state_ndc_compliance: [
-            { state: "Alabama", capture_rate: 0.98, enforcer: "State Medicaid Agency", notes: "Gold standard for NDC compliance" },
-            { state: "California", capture_rate: 0.72, enforcer: "DHCS", notes: "Improving with new mandate" },
-            { state: "New York", capture_rate: 0.68, enforcer: "DOH", notes: "New legislation pending" },
-            { state: "Texas", capture_rate: 0.55, enforcer: "HHSC", notes: "Limited enforcement" },
-            { state: "Florida", capture_rate: 0.61, enforcer: "AHCA", notes: "Recent audit revealed gaps" },
-            { state: "Ohio", capture_rate: 0.85, enforcer: "ODM", notes: "Strong post-reform compliance" },
-            { state: "Pennsylvania", capture_rate: 0.63, enforcer: "DHS", notes: "Under review" },
-            { state: "Illinois", capture_rate: 0.58, enforcer: "HFS", notes: "Legislation in progress" },
-          ],
-          net_effective_rebate_ranges: [
-            { therapy_class: "Diabetes (GLP-1s)", low: 45, high: 70 },
-            { therapy_class: "Autoimmune (TNF inhibitors)", low: 40, high: 65 },
-            { therapy_class: "Oncology (oral)", low: 5, high: 15 },
-            { therapy_class: "Cardiovascular (PCSK9)", low: 50, high: 75 },
-            { therapy_class: "Respiratory (biologics)", low: 35, high: 55 },
-            { therapy_class: "Mental Health (atypicals)", low: 20, high: 40 },
-          ],
-        });
+        setPublicData(null);
       } finally {
         setPublicLoading(false);
       }
@@ -202,18 +175,7 @@ export default function BenchmarksPage() {
         const data = await res.json();
         setIraDrugs(data.drugs || data || []);
       } catch {
-        setIraDrugs([
-          { drug_name: "Eliquis", manufacturer: "BMS/Pfizer", indication: "Blood thinner", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Jardiance", manufacturer: "Boehringer Ingelheim", indication: "Diabetes", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Xarelto", manufacturer: "Johnson & Johnson", indication: "Blood thinner", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Januvia", manufacturer: "Merck", indication: "Diabetes", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Farxiga", manufacturer: "AstraZeneca", indication: "Diabetes / Heart failure", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Entresto", manufacturer: "Novartis", indication: "Heart failure", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Enbrel", manufacturer: "Amgen", indication: "Autoimmune", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Imbruvica", manufacturer: "AbbVie/J&J", indication: "Cancer", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Stelara", manufacturer: "Johnson & Johnson", indication: "Autoimmune", negotiated_price: "TBD", effective_date: "2026" },
-          { drug_name: "Fiasp/NovoLog", manufacturer: "Novo Nordisk", indication: "Diabetes (insulin)", negotiated_price: "TBD", effective_date: "2026" },
-        ]);
+        setIraDrugs([]);
       } finally {
         setIraLoading(false);
       }

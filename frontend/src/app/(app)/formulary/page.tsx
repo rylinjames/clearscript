@@ -108,17 +108,7 @@ export default function FormularyPage() {
       const data = await res.json();
       setParsedFormulary(data);
     } catch {
-      // Demo fallback
-      setParsedFormulary({
-        drug_count: 1247,
-        tier_distribution: {
-          "Tier 1 (Generic)": 680,
-          "Tier 2 (Preferred Brand)": 312,
-          "Tier 3 (Non-Preferred)": 168,
-          "Tier 4 (Specialty)": 87,
-        },
-        scores: { cost: 62, access: 74, specialty: 45 },
-      });
+      setParsedFormulary(null);
     } finally {
       setUploadLoading(false);
     }
@@ -142,17 +132,7 @@ export default function FormularyPage() {
       const data = await res.json();
       setCompareResult(data);
     } catch {
-      // Demo fallback
-      setCompareResult({
-        tier_changes: [
-          { drug: "Humira", old_tier: "Tier 2", new_tier: "Tier 3", impact: "Higher copay for patients" },
-          { drug: "Ozempic", old_tier: "Tier 2", new_tier: "Tier 2", impact: "No change" },
-          { drug: "Livalo", old_tier: "Not listed", new_tier: "Tier 2", impact: "Added as preferred -- possible rebate play" },
-          { drug: "Crestor", old_tier: "Tier 2", new_tier: "Not listed", impact: "Removed from formulary" },
-          { drug: "Dexilant", old_tier: "Tier 3", new_tier: "Tier 2", impact: "Moved to preferred -- brand-to-brand swap" },
-        ],
-        score_deltas: { cost: -8, access: -3, specialty: 2 },
-      });
+      setCompareResult(null);
     } finally {
       setCompareLoading(false);
     }

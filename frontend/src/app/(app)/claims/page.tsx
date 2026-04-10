@@ -127,7 +127,7 @@ export default function ClaimsPage() {
       if (!res.ok) throw new Error("Reset failed");
       setSelectedFile(null);
       await fetchStatus();
-      toast("Claims data reset to sample data", "info");
+      toast("Claims data removed", "info");
     } catch {
       setError("Failed to reset claims data.");
       toast("Failed to reset claims data", "error");
@@ -196,10 +196,10 @@ export default function ClaimsPage() {
             <Database className="w-5 h-5 text-blue-600 flex-shrink-0" />
             <div>
               <p className="text-sm font-medium text-blue-800">
-                Demo data based on publicly available sources — {status?.claims_count?.toLocaleString() || "500"} claims
+                No claims data uploaded
               </p>
               <p className="text-xs text-blue-600 mt-0.5">
-                Upload your own claims CSV to replace the demo dataset
+                Upload your pharmacy claims CSV to see plan-specific analysis across all modules
               </p>
             </div>
           </>
@@ -281,12 +281,12 @@ export default function ClaimsPage() {
               {resetting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Resetting...
+                  Removing...
                 </>
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4" />
-                  Reset to Demo Data
+                  Remove Uploaded Data
                 </>
               )}
             </button>
@@ -396,17 +396,18 @@ export default function ClaimsPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
         <p className="text-sm text-amber-800">
           <span className="font-semibold">Note:</span> Once uploaded, all analysis pages (Report Auditor,
-          Rebate Tracker, Spread Pricing, Formulary Detector, Benchmarks) will use your data instead of
-          the built-in demo dataset sourced from publicly available materials. Use the &quot;Reset to Demo Data&quot;
-          button to switch back at any time.
+          Rebate Tracker, Spread Pricing, Formulary Analysis, Benchmarks) will use your data. Contract
+          analyses on the Plan Intelligence page will show dollar-denominated leakage estimates based on
+          your actual spend instead of percentage ranges. Use the &quot;Remove Uploaded Data&quot; button to
+          clear your claims at any time.
         </p>
       </div>
 
       <ConfirmDialog
         open={showResetConfirm}
-        title="Reset Claims Data"
-        message="This will remove your uploaded claims and revert all analysis modules to the demo dataset sourced from publicly available materials. This action cannot be undone."
-        confirmLabel="Reset Data"
+        title="Remove Uploaded Claims"
+        message="This will remove your uploaded claims data. Analysis pages will no longer show plan-specific figures until you upload a new claims file. This action cannot be undone."
+        confirmLabel="Remove Data"
         variant="danger"
         onConfirm={() => {
           setShowResetConfirm(false);
