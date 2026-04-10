@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import StatusBadge from "@/components/StatusBadge";
 import MetricCard from "@/components/MetricCard";
-import DataSourceBanner from "@/components/DataSourceBanner";
 import { useToast } from "@/components/Toast";
 import { Loader2, Users, AlertTriangle, DollarSign, Activity, RefreshCw, ExternalLink } from "lucide-react";
 import {
@@ -100,7 +99,6 @@ export default function ProviderAnomalyPage() {
         </p>
       </div>
 
-      <DataSourceBanner onRefresh={() => { setRefreshing(true); fetchData(); }} refreshing={refreshing} error={error} />
 
       {outliers.length > 0 && (
         <div className="bg-gradient-to-r from-red-600 to-amber-600 rounded-xl p-5 mb-6 text-white">

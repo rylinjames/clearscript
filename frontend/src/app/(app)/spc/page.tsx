@@ -11,7 +11,6 @@ import {
   Heart,
   Pill,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 
@@ -68,69 +67,6 @@ interface ParsedPlanDoc {
   [key: string]: unknown;
 }
 
-const SAMPLE_PLAN_DOC_TEXT = `SUMMARY OF BENEFITS AND COVERAGE (SBC)
-Heartland Employers Health Coalition
-PBM: MegaCare PBM, Inc.
-Plan Type: Self-Insured PPO
-Effective Date: January 1, 2025
-Coverage Period: January 1, 2025 — December 31, 2025
-
-DEDUCTIBLE
-Individual In-Network: $1,500
-Individual Out-of-Network: $3,000
-Family In-Network: $3,000
-Family Out-of-Network: $6,000
-
-OUT-OF-POCKET MAXIMUM
-Individual In-Network: $6,500
-Individual Out-of-Network: $13,000
-Family In-Network: $13,000
-Family Out-of-Network: $26,000
-
-COPAYMENTS AND COINSURANCE
-Primary Care Visit: $25 copay (in-network) / 40% coinsurance (out-of-network)
-Specialist Visit: $50 copay (in-network) / 40% coinsurance (out-of-network)
-Urgent Care: $75 copay
-Emergency Room: $250 copay (waived if admitted)
-Preventive Care: $0 (in-network only)
-Mental Health (outpatient): $25 copay (in-network) / 40% coinsurance (out-of-network)
-Telehealth Visit: $10 copay
-
-PRESCRIPTION DRUG COVERAGE
-Pharmacy Benefit Manager: MegaCare PBM, Inc.
-Formulary: MegaCare National Formulary (closed formulary)
-Mandatory Mail-Order: Required for maintenance medications after second retail fill
-Specialty Pharmacy: MegaCare Specialty Pharmacy (exclusive)
-
-Tier 1 — Generic Drugs: Retail $10 copay / Mail Order $25 copay
-Tier 2 — Preferred Brand: Retail $35 copay / Mail Order $90 copay
-Tier 3 — Non-Preferred Brand: Retail $60 copay / Mail Order $150 copay
-Tier 4 — Specialty: 20% coinsurance up to $250 per fill
-
-Prior Authorization: Required for all Tier 3 and Tier 4 medications.
-Step Therapy: Required for select Tier 2 and Tier 3 medications.
-
-HOSPITAL SERVICES
-Inpatient (in-network): 20% coinsurance after deductible
-Inpatient (out-of-network): 40% coinsurance after deductible
-Outpatient Surgery: $150 copay + 20% coinsurance (in-network)
-
-EXCLUSIONS AND LIMITATIONS
-- Cosmetic surgery or procedures
-- Experimental or investigational treatments
-- Weight loss surgery (unless medically necessary with prior authorization)
-- Dental services (covered under separate dental plan)
-- Vision services beyond annual eye exam
-- Long-term care or custodial care
-- Over-the-counter medications
-- Infertility treatments beyond initial diagnostic evaluation
-
-OTHER BENEFITS
-Chiropractic Care: $40 copay, limited to 20 visits per year
-Physical Therapy: $40 copay, limited to 30 visits per year
-Durable Medical Equipment: 20% coinsurance after deductible
-Ambulance: $250 copay + 20% coinsurance`;
-
 export default function SPCPage() {
   const { toast } = useToast();
   usePageTitle("SBC/SPD Parser");
@@ -138,12 +74,6 @@ export default function SPCPage() {
   const [data, setData] = useState<ParsedPlanDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
-
-  const handleSampleUpload = async () => {
-    const blob = new Blob([SAMPLE_PLAN_DOC_TEXT], { type: "text/plain" });
-    const file = new File([blob], "sample-plan-document.txt", { type: "text/plain" });
-    await handleFileUpload(file);
-  };
 
   const handleFileUpload = useCallback(
     async (file: File) => {
@@ -222,16 +152,6 @@ export default function SPCPage() {
           Upload SBC/SPD Document
         </h3>
         <FileUpload onFileSelect={handleFileUpload} label="Upload SBC, SPD, or EOC document (PDF or TXT)" />
-        <div className="mt-4 text-center">
-          <button
-            onClick={handleSampleUpload}
-            disabled={parsing}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4" />
-            Analyze Sample Plan Document
-          </button>
-        </div>
       </div>
 
       {parsing && (

@@ -12,8 +12,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Synthetic provider data modeled after CMS PUF structure
-# In production, this would pull from data.cms.gov API
+# TEST-ONLY: Synthetic provider data. No production code path should
+# reach this — the provider_anomaly router is gated behind
+# custom_data_loaded so this endpoint returns no_data until the
+# user uploads real claims. When real provider analysis is built,
+# it should derive providers from the uploaded claims' pharmacy NPIs,
+# not from this hardcoded list.
 PROVIDERS = [
     {"npi": "1234567890", "name": "Dr. Sarah Chen", "specialty": "Internal Medicine", "city": "Chicago", "state": "IL"},
     {"npi": "2345678901", "name": "Dr. Michael Ross", "specialty": "Cardiology", "city": "Chicago", "state": "IL"},

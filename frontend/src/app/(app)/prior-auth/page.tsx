@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import StatusBadge from "@/components/StatusBadge";
 import MetricCard from "@/components/MetricCard";
-import DataSourceBanner from "@/components/DataSourceBanner";
 import { useToast } from "@/components/Toast";
 import { Loader2, ShieldCheck, AlertTriangle, CheckCircle2, Edit3, Trash2, RefreshCw, Clock, DollarSign, Award } from "lucide-react";
 import {
@@ -109,7 +108,6 @@ export default function PriorAuthPage() {
         </p>
       </div>
 
-      <DataSourceBanner onRefresh={() => { setRefreshing(true); fetchData(); }} refreshing={refreshing} error={error} />
 
       {/* Summary Banner */}
       <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-xl p-6 mb-6 text-white">

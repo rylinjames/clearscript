@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
 import ScoreCircle from "@/components/ScoreCircle";
-import { Search, Loader2, Sparkles, Check, X, ChevronDown, ChevronUp, FileText, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { Search, Loader2, Check, X, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 
 interface ChecklistItem {
@@ -50,109 +50,12 @@ interface CrossRefResult {
   summary: string;
 }
 
-const SAMPLE_DISCLOSURE_TEXT = `PBM INITIAL DISCLOSURE REPORT
-Prepared for: Heartland Employers Health Coalition
-Reporting Period: January 1, 2025 — June 30, 2025
-Prepared by: MegaCare PBM, Inc.
-
-SECTION 1: REBATE REVENUE DISCLOSURE
-
-During the reporting period, MegaCare PBM negotiated and received manufacturer rebates on behalf of the Plan Sponsor. Total rebate revenue attributable to Plan Sponsor claims: $42,317,892.45.
-
-Rebate categories:
-- Brand formulary rebates: $31,208,441.00
-- Market share incentives: $6,892,103.22
-- Admin/data fees from manufacturers: $4,217,348.23
-
-100% of designated "rebates" ($31,208,441.00) were passed through to Plan Sponsor per contract terms.
-
-Note: Market share incentives and admin/data fees are retained by PBM per Section 4.4 of the Agreement.
-
-SECTION 2: ADMINISTRATIVE FEE BREAKDOWN
-
-Per-member per-month (PMPM) administrative fee: $4.25
-Total members enrolled (average): 28,400
-Total administrative fees collected: $1,447,800.00
-
-Per-claim processing fees: $0.00 (included in PMPM)
-Specialty coordination fees: $312,000.00
-Clinical program management fees: $186,500.00
-
-SECTION 3: FORMULARY MANAGEMENT
-
-The Pharmacy and Therapeutics Committee met quarterly during the reporting period. Formulary changes during the period:
-- 14 new additions
-- 8 tier changes
-- 3 removals
-
-All changes communicated to Plan Sponsor with 60 days advance notice per contractual terms.
-
-SECTION 4: MAIL-ORDER PHARMACY UTILIZATION
-
-Mail-order utilization rate: 34.2%
-Total mail-order claims: 186,443
-Mail-order revenue (dispensing margin): $8,234,112.00
-Mail-order dispensing fees: $0.00
-
-Maintenance medication conversion program enrolled 12,800 members in auto-refill.
-
-SECTION 5: CLINICAL PROGRAM OUTCOMES
-
-Prior Authorization Program:
-- Total PA requests: 42,318
-- Approved: 36,122 (85.4%)
-- Denied: 6,196 (14.6%)
-- Estimated savings: $4,200,000
-
-Step Therapy Program:
-- Members enrolled: 8,400
-- Estimated savings: $2,600,000
-
-Total clinical program savings: $6,800,000
-
-SECTION 6: PERFORMANCE GUARANTEE REPORTING
-
-Generic Dispensing Rate (GDR):
-- Guaranteed minimum: 88.0%
-- Actual achieved: 91.2%
-- Status: GUARANTEE MET
-
-Brand Effective Rate (BER):
-- Guaranteed minimum: AWP-17%
-- Actual achieved: AWP-18.1%
-- Status: GUARANTEE MET
-
-Generic Effective Rate (GER):
-- Guaranteed minimum: AWP-80%
-- Actual achieved: AWP-82.3%
-- Status: GUARANTEE MET
-
-Claims Processing Accuracy:
-- Guaranteed minimum: 99.0%
-- Actual achieved: 99.2%
-- Status: GUARANTEE MET
-
-SECTION 7: NETWORK SUMMARY
-
-Total network pharmacies: 67,200
-Retail pharmacies: 64,100
-Specialty pharmacies: 1,800
-Mail-order facilities: 3
-
-Network adequacy meets CMS standards in all required zip codes.
-
-END OF DISCLOSURE REPORT
-
-Note: This disclosure does not include information regarding spread pricing differentials, MAC list composition, specialty pharmacy margins, manufacturer administrative fees, or subcontractor relationships, as these items are considered proprietary and confidential under the terms of the Agreement.`;
-
 export default function DisclosurePage() {
   usePageTitle("Disclosure Analyzer");
   const [loading, setLoading] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistItem[] | null>(null);
   const [gaps, setGaps] = useState<GapItem[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showSource, setShowSource] = useState(false);
-  const [sourceText, setSourceText] = useState<string | null>(null);
 
   // Cross-reference state
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
@@ -249,26 +152,6 @@ export default function DisclosurePage() {
     }
   };
 
-  const handleSampleDisclosure = async () => {
-    setLoading(true);
-    setError(null);
-    setChecklist(null);
-    setSourceText(SAMPLE_DISCLOSURE_TEXT);
-    setGaps([]);
-    setCrossRef(null);
-
-    const blob = new Blob([SAMPLE_DISCLOSURE_TEXT], { type: "text/plain" });
-    const file = new File([blob], "sample-pbm-disclosure.txt", { type: "text/plain" });
-    setLastUploadedFile(file);
-    try {
-      await runAnalysis(file);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Disclosure analysis failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const score = checklist
     ? Math.round(
         (checklist.filter((c) => c.found).length / checklist.length) * 100
@@ -292,37 +175,7 @@ export default function DisclosurePage() {
           onFileSelect={handleFileUpload}
           label="Upload a PBM disclosure document"
         />
-        <div className="mt-4 text-center">
-          <button
-            onClick={handleSampleDisclosure}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4" />
-            Analyze Sample Disclosure
-          </button>
-        </div>
       </div>
-
-      {sourceText && !loading && (
-        <div className="bg-white rounded-xl border border-gray-200 mb-6 overflow-hidden">
-          <button
-            onClick={() => setShowSource(!showSource)}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-              <FileText className="w-4 h-4 text-primary-600" />
-              Source Document Being Analyzed
-            </div>
-            {showSource ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-          </button>
-          {showSource && (
-            <div className="border-t border-gray-200 p-4 bg-gray-50 max-h-80 overflow-y-auto">
-              <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed">{sourceText}</pre>
-            </div>
-          )}
-        </div>
-      )}
 
       {loading && (
         <AIAnalysisProgress

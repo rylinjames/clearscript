@@ -12,6 +12,11 @@ from typing import List, Dict, Any, Optional
 random.seed(42)
 
 # ─── Drug Master List ───────────────────────────────────────────────────────────
+# TEST-ONLY: This data exists for unit tests and local development.
+# No production code path should read from DRUGS, PHARMACIES, or
+# generate_claims(). The production data path is:
+#   User uploads claims CSV → set_claims_data() → get_claims()
+# If get_claims() is called without an upload, it returns [].
 
 DRUGS = [
     {"name": "Atorvastatin 40mg",     "ndc": "00071015523", "generic": True,  "class": "Statin",            "nadac_unit": 0.06,  "awp_unit": 0.45},
@@ -72,6 +77,7 @@ DRUGS = [
 
 # ─── Pharmacy Master List ────────────────────────────────────────────────────────
 
+# TEST-ONLY: See DRUGS comment above.
 PHARMACIES = [
     {"id": "PH001", "name": "CVS Pharmacy #4521",       "npi": "1234567890", "type": "retail",    "chain": "CVS",       "city": "Chicago",     "state": "IL", "zip": "60601", "active": True},
     {"id": "PH002", "name": "Walgreens #1892",           "npi": "2345678901", "type": "retail",    "chain": "Walgreens", "city": "Chicago",     "state": "IL", "zip": "60605", "active": True},
@@ -104,6 +110,8 @@ def _pick_channel_pharmacy(drug: dict) -> dict:
     ph = random.choice(pool)
     return {**ph, "channel": channel}
 
+# TEST-ONLY: generate_claims is no longer called by any production code path.
+# get_claims() returns [] when no real claims are uploaded.
 def generate_claims(n: int = 500) -> List[Dict[str, Any]]:
     claims = []
     base_date = datetime(2025, 1, 1)

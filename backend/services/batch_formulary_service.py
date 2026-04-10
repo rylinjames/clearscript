@@ -372,7 +372,7 @@ def get_mock_index() -> dict:
 
 
 def _mock_rows(tier_model: int, state: Optional[str], plan: str) -> list[dict]:
-    """Generate representative mock drug rows for demo purposes."""
+    """TEST-ONLY: Generate mock drug rows for demo/test purposes. Not called by production endpoints."""
     import random
     random.seed(hash(plan) % 2**31)
 

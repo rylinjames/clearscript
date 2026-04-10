@@ -1342,21 +1342,24 @@ def _structural_risk_override_for(analysis: dict) -> dict:
     }
 
 
-def _audit_implication_for(analysis: dict) -> str:
-    audit = analysis.get("audit_rights", {}) if isinstance(analysis, dict) else {}
-    details = str(audit.get("details", "")).lower()
-    exposure = analysis.get("financial_exposure", {}) if isinstance(analysis, dict) else {}
-    claims_context = exposure.get("claims_context", {}) if isinstance(exposure, dict) else {}
-    if claims_context:
-        specialty_spend = claims_context.get("specialty_spend", 0)
-        total_spend = claims_context.get("total_spend", 0)
-        return (
-            "Current audit language leaves the plan sponsor unable to verify pharmacy reimbursement, full manufacturer compensation, "
-            f"or specialty economics across ${specialty_spend:,.2f} of observed specialty spend and ${total_spend:,.2f} of uploaded claim volume."
-        )
-    if not audit or "limited" in details or "not include" in details or "claims data only" in details:
-        return "Current audit language leaves the plan sponsor unable to verify pharmacy reimbursement, full manufacturer compensation, network economics, or specialty channel performance."
-    return "Audit language appears broader, but pricing, rebate, and specialty data should still be tested in practice."
+def _audit_implication_for(analysis: dict) -> str | None:
+    """Return a contract-specific audit implication or None.
+
+    The previous version returned hardcoded generic sentences like
+    "Current audit language leaves the plan sponsor unable to verify
+    pharmacy reimbursement, full manufacturer compensation, network
+    economics, or specialty channel performance" — the same text on
+    every contract. That's not analysis, it's filler. Now returns
+    None if the AI didn't produce a contract-specific implication,
+    and the frontend simply doesn't render the Audit Interpretation
+    callout for that contract.
+    """
+    # The AI prompt asks for audit_implication with contract-specific
+    # language. If the AI produced one, it's already in the analysis
+    # dict and this function is only called when it's missing. Return
+    # None to signal "no contract-specific implication available"
+    # rather than faking one with a template.
+    return None
 
 
 def _supporting_detail_for_observation(key: str, analysis: dict) -> str | None:

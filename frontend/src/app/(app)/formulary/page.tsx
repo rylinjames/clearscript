@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import StatusBadge from "@/components/StatusBadge";
 import FileUpload from "@/components/FileUpload";
-import DataSourceBanner from "@/components/DataSourceBanner";
 import { Pill, Loader2, AlertTriangle, ArrowRight, Upload, GitCompare } from "lucide-react";
 
 interface FormularySwap {
@@ -162,7 +161,6 @@ export default function FormularyPage() {
         </p>
       </div>
 
-      <DataSourceBanner />
 
       {/* Upload Formulary Section */}
       <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">

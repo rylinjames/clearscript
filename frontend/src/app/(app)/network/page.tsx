@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import StatusBadge from "@/components/StatusBadge";
-import DataSourceBanner from "@/components/DataSourceBanner";
 import ScoreCircle from "@/components/ScoreCircle";
 import { MapPin, Loader2, AlertTriangle } from "lucide-react";
 
@@ -106,7 +105,6 @@ export default function NetworkPage() {
         </p>
       </div>
 
-      <DataSourceBanner />
 
       <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">

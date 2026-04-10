@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import { BarChart3, Loader2, AlertTriangle, Globe, FileText, Pill } from "lucide-react";
-import DataSourceBanner from "@/components/DataSourceBanner";
 import {
   RadarChart,
   PolarGrid,
@@ -219,7 +218,6 @@ export default function BenchmarksPage() {
         </p>
       </div>
 
-      <DataSourceBanner />
 
       {/* Tab Navigation */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1">
