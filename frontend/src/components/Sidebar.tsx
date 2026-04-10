@@ -14,7 +14,6 @@ import {
   ChevronDown,
   Menu,
   X,
-  Upload,
 } from "lucide-react";
 
 interface NavItem {
@@ -34,7 +33,6 @@ const navGroups: NavGroup[] = [
     label: "Analyze",
     items: [
       { href: "/contracts", label: "Plan Intelligence", icon: FileText },
-      { href: "/claims", label: "Upload Claims", icon: Upload },
       { href: "/disclosure", label: "Disclosure Analyzer", icon: Search },
       { href: "/spc", label: "Plan Doc Parser", icon: ScrollText },
     ],

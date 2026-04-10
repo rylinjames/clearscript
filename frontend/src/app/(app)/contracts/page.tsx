@@ -1652,7 +1652,7 @@ function ContractsPageInner() {
                   {!customLoaded && (
                     <p className="text-xs text-amber-700 mt-2">
                       Estimates below are expressed as percentages of plan spend.{" "}
-                      <Link href="/claims" className="underline font-semibold hover:text-amber-900">Upload your claims data</Link>
+                      <a href="#claims-upload" className="underline font-semibold hover:text-amber-900">Upload your claims data</a>
                       {" "}to convert these into your specific dollar figures.
                     </p>
                   )}
@@ -1687,7 +1687,7 @@ function ContractsPageInner() {
                       ))}
                     </div>
                     <p className="text-xs text-gray-600 mt-2">
-                      <Link href="/claims" className="underline font-semibold text-primary-600 hover:text-primary-800">Upload your claims data</Link>
+                      <a href="#claims-upload" className="underline font-semibold text-primary-600 hover:text-primary-800">Upload your claims data</a>
                       {" "}to convert these percentage ranges into specific dollar figures for your plan.
                     </p>
                   </div>
@@ -1997,7 +1997,7 @@ function ContractsPageInner() {
               page in the sidebar with no connection to any contract.
           */}
           {contractRowId !== null && (
-            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
+            <div id="claims-upload" className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6 scroll-mt-20">
               <div className="flex items-center gap-2 mb-4">
                 <DollarSign className="w-5 h-5 text-primary-600" />
                 <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Claims Data</h2>
@@ -2294,9 +2294,9 @@ function ContractsPageInner() {
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <p className="text-sm text-amber-900 flex-1 leading-snug">
               <span className="font-semibold">Leakage shown as percentages.</span>{" "}
-              <Link href="/claims" className="underline font-semibold text-amber-900 hover:text-amber-700">
+              <a href="#claims-upload" className="underline font-semibold text-amber-900 hover:text-amber-700">
                 Upload your claims data
-              </Link>
+              </a>
               {" "}to convert these into specific dollar figures for your plan.
             </p>
             <button
