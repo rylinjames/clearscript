@@ -20,7 +20,6 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
-  Scale,
   CheckCircle2,
   XCircle as XCircleIcon,
   Download,
@@ -53,27 +52,12 @@ interface EligibleRebateDefinition {
   details?: string;
 }
 
-interface DisputeResolution {
-  mechanism: string;
-  details?: string;
-  risk_level?: string;
-}
-
 interface AnalysisExtras {
   audit_rights?: {
     checklist?: AuditChecklistItem[];
     [key: string]: unknown;
   };
   eligible_rebate_definition?: EligibleRebateDefinition;
-  dispute_resolution?: DisputeResolution;
-  statistical_extrapolation_rights?: {
-    found: boolean;
-    details?: string;
-  };
-  statistical_extrapolation?: {
-    found: boolean;
-    details?: string;
-  };
   [key: string]: unknown;
 }
 
@@ -516,8 +500,6 @@ function ContractsPageInner() {
   // New analysis extras state
   const [auditChecklist, setAuditChecklist] = useState<AuditChecklistItem[] | null>(null);
   const [rebateDefinition, setRebateDefinition] = useState<EligibleRebateDefinition | null>(null);
-  const [disputeResolution, setDisputeResolution] = useState<DisputeResolution | null>(null);
-  const [statisticalExtrapolation, setStatisticalExtrapolation] = useState<{ found: boolean; details?: string } | null>(null);
 
   // Step 2: Plan document state
   const [planBenefits, setPlanBenefits] = useState<PlanBenefits | null>(null);
@@ -647,14 +629,6 @@ function ContractsPageInner() {
     if (a.eligible_rebate_definition) {
       setRebateDefinition(a.eligible_rebate_definition);
     }
-    if (a.dispute_resolution) {
-      setDisputeResolution(a.dispute_resolution);
-    }
-    if (a.statistical_extrapolation_rights) {
-      setStatisticalExtrapolation(a.statistical_extrapolation_rights);
-    } else if (a.statistical_extrapolation) {
-      setStatisticalExtrapolation(a.statistical_extrapolation);
-    }
   };
 
   const processResponse = (data: Record<string, unknown>) => {
@@ -729,8 +703,6 @@ function ContractsPageInner() {
       setTerms(null);
       setAuditChecklist(null);
       setRebateDefinition(null);
-      setDisputeResolution(null);
-      setStatisticalExtrapolation(null);
       setPlanBenefits(null);
       setPlanDocType(null);
       setCrossRef(null);
@@ -974,8 +946,6 @@ function ContractsPageInner() {
     setAuditChecklist(null);
     setRebateDefinition(null);
     setContractFilename(file.name);
-    setDisputeResolution(null);
-    setStatisticalExtrapolation(null);
     setStickyClaimsDismissed(false);
     setLoadedFromHistoryId(null);
 
@@ -1016,8 +986,6 @@ function ContractsPageInner() {
     setSourceText(SAMPLE_CONTRACT_TEXT);
     setAuditChecklist(null);
     setRebateDefinition(null);
-    setDisputeResolution(null);
-    setStatisticalExtrapolation(null);
     setLoadedFromHistoryId(null);
 
     const blob = new Blob([SAMPLE_CONTRACT_TEXT], { type: "text/plain" });
@@ -1107,12 +1075,6 @@ function ContractsPageInner() {
   const linkedFindings = ((rawContractAnalysis?.linked_findings as Array<Record<string, string>> | undefined) || []).slice(0, 3);
   const dealDiagnosis = (rawContractAnalysis?.deal_diagnosis as string | undefined) || (rawContractAnalysis?.summary as string | undefined) || null;
   const auditImplication = (rawContractAnalysis?.audit_implication as string | undefined) || null;
-
-  const disputeRiskColor = (level?: string) => {
-    if (level === "high") return "text-red-700 bg-red-50 border-red-200";
-    if (level === "low") return "text-emerald-700 bg-emerald-50 border-emerald-200";
-    return "text-amber-700 bg-amber-50 border-amber-200";
-  };
 
   return (
     <div className="animate-fade-in">
@@ -1860,7 +1822,7 @@ function ContractsPageInner() {
               same "can the plan sponsor actually verify what they paid
               for" question. Grouping them under a single header makes the
               audit story coherent. */}
-          {(auditChecklist && auditChecklist.length > 0) || disputeResolution || statisticalExtrapolation ? (
+          {auditChecklist && auditChecklist.length > 0 ? (
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-primary-600" />
@@ -1905,79 +1867,6 @@ function ContractsPageInner() {
                 </div>
               )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Dispute Resolution */}
-            {disputeResolution && (
-              <div className={`rounded-xl border p-5 ${disputeRiskColor(disputeResolution.risk_level)}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <Scale className="w-4 h-4" />
-                  <h3 className="text-sm font-bold uppercase tracking-wider">
-                    Dispute Resolution
-                  </h3>
-                </div>
-                <p className="text-lg font-bold capitalize mb-1">
-                  {disputeResolution.mechanism}
-                </p>
-                {disputeResolution.details && (
-                  <p className="text-sm opacity-80">{disputeResolution.details}</p>
-                )}
-                {disputeResolution.risk_level && (
-                  <div className="mt-2 mb-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
-                      disputeResolution.risk_level === "high"
-                        ? "bg-red-200 text-red-800"
-                        : disputeResolution.risk_level === "low"
-                        ? "bg-emerald-200 text-emerald-800"
-                        : "bg-amber-200 text-amber-800"
-                    }`}>
-                      {disputeResolution.risk_level.toUpperCase()} RISK
-                    </span>
-                  </div>
-                )}
-                <div className="mt-3 pt-3 border-t border-current/10">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70 mb-1">Why it matters</p>
-                  <p className="text-xs opacity-90 leading-relaxed">
-                    Without binding arbitration or an external escalation path, the PBM has no enforceable accountability for unaddressed audit findings. They can refuse to fix issues and the only remedy is litigation — slow, expensive, and rarely pursued by plan sponsors.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Statistical Extrapolation */}
-            {statisticalExtrapolation && (
-              <div className={`rounded-xl border p-5 ${
-                statisticalExtrapolation.found
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                  : "bg-red-50 border-red-200 text-red-700"
-              }`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <BarChart3 className="w-4 h-4" />
-                  <h3 className="text-sm font-bold uppercase tracking-wider">
-                    Statistical Extrapolation
-                  </h3>
-                </div>
-                <div className="flex items-center gap-2 mb-1">
-                  {statisticalExtrapolation.found ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  ) : (
-                    <XCircleIcon className="w-5 h-5 text-red-500" />
-                  )}
-                  <p className="text-lg font-bold">
-                    {statisticalExtrapolation.found ? "Found" : "Not Found"}
-                  </p>
-                </div>
-                {statisticalExtrapolation.details && (
-                  <p className="text-sm opacity-80">{statisticalExtrapolation.details}</p>
-                )}
-                <div className="mt-3 pt-3 border-t border-current/10">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70 mb-1">Why it matters</p>
-                  <p className="text-xs opacity-90 leading-relaxed">
-                    Without this right, an auditor can only recover errors found in the specific claims they sampled — not project a known error rate across the full population. On a typical pharmacy audit that leaves an estimated 80% or more of overcharges uncollected.
-                  </p>
-                </div>
-              </div>
-            )}
-              </div>
             </div>
           ) : null}
 
