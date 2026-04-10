@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
 import ScoreCircle from "@/components/ScoreCircle";
-import { Search, Loader2, Sparkles, Check, X, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import { Search, Loader2, Sparkles, Check, X, ChevronDown, ChevronUp, FileText, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 
 interface ChecklistItem {
@@ -14,9 +14,40 @@ interface ChecklistItem {
 }
 
 interface GapItem {
-  gap: string;
-  impact: string;
+  missing_item: string;
+  why_required: string;
   recommendation: string;
+  impact: string;
+}
+
+interface ContractListItem {
+  id: number;
+  filename: string;
+  analysis_date: string | null;
+  deal_score: number | null;
+  risk_level: string | null;
+}
+
+interface Discrepancy {
+  category: string;
+  severity: string;
+  contract_says: string;
+  disclosure_says: string;
+  gap: string;
+  recommendation: string;
+}
+
+interface Confirmation {
+  category: string;
+  contract_says: string;
+  disclosure_confirms: string;
+}
+
+interface CrossRefResult {
+  discrepancies: Discrepancy[];
+  confirmations: Confirmation[];
+  overall_alignment_score: number;
+  summary: string;
 }
 
 const SAMPLE_DISCLOSURE_TEXT = `PBM INITIAL DISCLOSURE REPORT
@@ -123,11 +154,27 @@ export default function DisclosurePage() {
   const [showSource, setShowSource] = useState(false);
   const [sourceText, setSourceText] = useState<string | null>(null);
 
-  // Note: we deliberately do NOT auto-run the sample analysis on mount.
-  // It used to fire `handleSampleDisclosure()` from a useEffect, which sent
-  // the sample text to gpt-5.4-mini on every page visit and made the page
-  // appear to hang for 30-60 seconds before the user could interact with it.
-  // The "Load sample" button below now requires an explicit click.
+  // Cross-reference state
+  const [contracts, setContracts] = useState<ContractListItem[]>([]);
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
+  const [crossRefLoading, setCrossRefLoading] = useState(false);
+  const [crossRef, setCrossRef] = useState<CrossRefResult | null>(null);
+  const [crossRefContractName, setCrossRefContractName] = useState<string | null>(null);
+  // Store the last uploaded file so we can re-send it for cross-reference
+  const [lastUploadedFile, setLastUploadedFile] = useState<File | null>(null);
+
+  // Fetch contract list on mount for the cross-reference picker
+  useEffect(() => {
+    const fetchContracts = async () => {
+      try {
+        const res = await fetch("/api/contracts/list");
+        if (!res.ok) return;
+        const data = await res.json();
+        setContracts(Array.isArray(data?.contracts) ? data.contracts : []);
+      } catch { /* optional */ }
+    };
+    fetchContracts();
+  }, []);
 
   const runAnalysis = async (file: File) => {
     const formData = new FormData();
@@ -162,10 +209,23 @@ export default function DisclosurePage() {
 
     const gr = a.gap_report;
     if (gr) {
+      const parseGap = (g: unknown, impact: string): GapItem => {
+        if (typeof g === "object" && g !== null) {
+          const obj = g as Record<string, string>;
+          return {
+            missing_item: obj.missing_item || obj.gap || "",
+            why_required: obj.why_required || "",
+            recommendation: obj.recommendation || "",
+            impact,
+          };
+        }
+        // Legacy: plain string from old prompt
+        return { missing_item: String(g), why_required: "", recommendation: String(g), impact };
+      };
       const allGaps = [
-        ...(gr.critical_gaps || []).map((g: string) => ({ gap: g, impact: "Critical", recommendation: g })),
-        ...(gr.moderate_gaps || []).map((g: string) => ({ gap: g, impact: "High", recommendation: g })),
-        ...(gr.minor_gaps || []).map((g: string) => ({ gap: g, impact: "Medium", recommendation: g })),
+        ...(gr.critical_gaps || []).map((g: unknown) => parseGap(g, "Critical")),
+        ...(gr.moderate_gaps || []).map((g: unknown) => parseGap(g, "High")),
+        ...(gr.minor_gaps || []).map((g: unknown) => parseGap(g, "Medium")),
       ];
       setGaps(allGaps);
     } else {
@@ -178,6 +238,8 @@ export default function DisclosurePage() {
     setError(null);
     setChecklist(null);
     setGaps([]);
+    setCrossRef(null);
+    setLastUploadedFile(file);
     try {
       await runAnalysis(file);
     } catch (e) {
@@ -193,9 +255,11 @@ export default function DisclosurePage() {
     setChecklist(null);
     setSourceText(SAMPLE_DISCLOSURE_TEXT);
     setGaps([]);
+    setCrossRef(null);
 
     const blob = new Blob([SAMPLE_DISCLOSURE_TEXT], { type: "text/plain" });
     const file = new File([blob], "sample-pbm-disclosure.txt", { type: "text/plain" });
+    setLastUploadedFile(file);
     try {
       await runAnalysis(file);
     } catch (e) {
@@ -319,32 +383,208 @@ export default function DisclosurePage() {
           </div>
 
           {gaps.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6">
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
               <h3 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wider">
                 Gap Report
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {gaps.map((gap, i) => (
-                  <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${
-                    gap.impact === "Critical" ? "bg-red-50" : gap.impact === "High" ? "bg-amber-50" : "bg-blue-50"
+                  <div key={i} className={`rounded-lg border p-4 ${
+                    gap.impact === "Critical" ? "bg-red-50 border-red-200" : gap.impact === "High" ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"
                   }`}>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold flex-shrink-0 mt-0.5 ${
-                      gap.impact === "Critical"
-                        ? "bg-red-100 text-red-700"
-                        : gap.impact === "High"
-                        ? "bg-amber-100 text-amber-700"
-                        : "bg-blue-100 text-blue-700"
-                    }`}>
-                      {gap.impact}
-                    </span>
-                    <p className={`text-sm leading-relaxed ${
-                      gap.impact === "Critical" ? "text-red-800" : gap.impact === "High" ? "text-amber-800" : "text-blue-800"
-                    }`}>
-                      {gap.gap}
-                    </p>
+                    <div className="flex items-start gap-3 mb-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold flex-shrink-0 ${
+                        gap.impact === "Critical"
+                          ? "bg-red-100 text-red-700"
+                          : gap.impact === "High"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {gap.impact}
+                      </span>
+                      <p className={`text-sm font-semibold ${
+                        gap.impact === "Critical" ? "text-red-900" : gap.impact === "High" ? "text-amber-900" : "text-blue-900"
+                      }`}>
+                        {gap.missing_item}
+                      </p>
+                    </div>
+                    {gap.why_required && (
+                      <p className="text-xs text-gray-600 mb-1.5 ml-8">
+                        <span className="font-semibold">Required by:</span> {gap.why_required}
+                      </p>
+                    )}
+                    {gap.recommendation && gap.recommendation !== gap.missing_item && (
+                      <p className="text-xs text-gray-700 ml-8">
+                        <span className="font-semibold">Action:</span> {gap.recommendation}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ═══ Cross-Reference Against Contract ═══ */}
+          {contracts.length > 0 && lastUploadedFile && (
+            <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wider">
+                Cross-Reference Against a Contract
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Compare this disclosure against a previously analyzed PBM contract to find discrepancies between what the contract promises and what the disclosure reports.
+              </p>
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Select contract</label>
+                  <select
+                    value={selectedContractId ?? ""}
+                    onChange={(e) => setSelectedContractId(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-600 focus:border-primary-600 outline-none bg-white"
+                  >
+                    <option value="">Choose a contract...</option>
+                    {contracts.map((c) => {
+                      const dateStr = c.analysis_date ? c.analysis_date.split(" ")[0] : "";
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.filename} ({dateStr}{c.deal_score !== null ? ` · score ${c.deal_score}` : ""})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!selectedContractId || !lastUploadedFile) return;
+                    setCrossRefLoading(true);
+                    setCrossRef(null);
+                    try {
+                      const formData = new FormData();
+                      formData.append("file", lastUploadedFile);
+                      const res = await fetch(`/api/disclosure/cross-reference?contract_id=${selectedContractId}`, {
+                        method: "POST",
+                        body: formData,
+                      });
+                      if (!res.ok) {
+                        let detail = `Cross-reference failed with status ${res.status}`;
+                        try { const e = await res.json(); if (e?.detail) detail = String(e.detail); } catch {}
+                        throw new Error(detail);
+                      }
+                      const data = await res.json();
+                      setCrossRef(data.cross_reference || null);
+                      setCrossRefContractName(data.contract_filename || null);
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Cross-reference failed");
+                    } finally {
+                      setCrossRefLoading(false);
+                    }
+                  }}
+                  disabled={!selectedContractId || crossRefLoading}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
+                >
+                  {crossRefLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  {crossRefLoading ? "Comparing..." : "Compare"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {crossRefLoading && (
+            <AIAnalysisProgress variant="disclosure" estimatedSeconds={30} />
+          )}
+
+          {/* Cross-reference results */}
+          {crossRef && !crossRefLoading && (
+            <div className="space-y-6 mb-6">
+              {/* Alignment score */}
+              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                      Disclosure vs Contract
+                    </h3>
+                    {crossRefContractName && (
+                      <p className="text-xs text-gray-500 mt-0.5">Compared against {crossRefContractName}</p>
+                    )}
+                  </div>
+                  <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${
+                    crossRef.overall_alignment_score >= 80
+                      ? "bg-emerald-100 text-emerald-800"
+                      : crossRef.overall_alignment_score >= 50
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-red-100 text-red-800"
+                  }`}>
+                    {crossRef.overall_alignment_score}% Aligned
+                  </div>
+                </div>
+                {crossRef.summary && (
+                  <p className="text-sm text-gray-700">{crossRef.summary}</p>
+                )}
+              </div>
+
+              {/* Discrepancies */}
+              {crossRef.discrepancies && crossRef.discrepancies.length > 0 && (
+                <div className="bg-white rounded-xl border-2 border-red-200 shadow-[var(--shadow-card)] overflow-hidden">
+                  <div className="px-5 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-600" />
+                    <h3 className="text-sm font-bold text-red-900 uppercase tracking-wider">
+                      Discrepancies Found ({crossRef.discrepancies.length})
+                    </h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {crossRef.discrepancies.map((d, i) => (
+                      <div key={i} className="px-5 py-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            d.severity === "high" ? "bg-red-100 text-red-700" : d.severity === "medium" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                          }`}>
+                            {d.severity.toUpperCase()}
+                          </span>
+                          <span className="text-xs text-gray-500">{d.category}</span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900 mb-2">{d.gap}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                          <div className="p-3 bg-blue-50 rounded-lg">
+                            <p className="text-[11px] font-semibold text-blue-700 uppercase mb-1">Contract says</p>
+                            <p className="text-xs text-blue-900">{d.contract_says}</p>
+                          </div>
+                          <div className="p-3 bg-amber-50 rounded-lg">
+                            <p className="text-[11px] font-semibold text-amber-700 uppercase mb-1">Disclosure says</p>
+                            <p className="text-xs text-amber-900">{d.disclosure_says}</p>
+                          </div>
+                        </div>
+                        {d.recommendation && (
+                          <p className="text-xs text-gray-600">
+                            <span className="font-semibold">Action:</span> {d.recommendation}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Confirmations */}
+              {crossRef.confirmations && crossRef.confirmations.length > 0 && (
+                <div className="bg-white rounded-xl border border-emerald-200 shadow-[var(--shadow-card)] overflow-hidden">
+                  <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-sm font-bold text-emerald-900 uppercase tracking-wider">
+                      Confirmed ({crossRef.confirmations.length})
+                    </h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {crossRef.confirmations.map((c, i) => (
+                      <div key={i} className="px-5 py-3 flex items-start gap-3">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-900">{c.contract_says}</p>
+                          <p className="text-xs text-emerald-700 mt-0.5">{c.disclosure_confirms}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>

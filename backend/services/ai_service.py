@@ -1718,22 +1718,98 @@ Check for the presence and completeness of each required item and return structu
     }
   ],
   "gap_report": {
-    "critical_gaps": [str],
-    "moderate_gaps": [str],
-    "minor_gaps": [str]
+    "critical_gaps": [
+      {
+        "missing_item": "what is missing from the disclosure",
+        "why_required": "specific DOL rule, statute, or regulatory citation that requires this item (e.g. 'DOL Transparency Rule 29 CFR 2520.408b-2(c)(1)(iv)')",
+        "recommendation": "specific action to take — what the PBM should disclose and in what format"
+      }
+    ],
+    "moderate_gaps": [same structure],
+    "minor_gaps": [same structure]
   },
   "summary": str
 }
+
+IMPORTANT: Each gap in critical_gaps, moderate_gaps, and minor_gaps MUST be a JSON object with three fields (missing_item, why_required, recommendation), NOT a plain string. The frontend renders these as separate columns.
 """
 
 async def analyze_disclosure(text: str) -> dict:
     """
     Score a PBM disclosure against DOL-required items. Raises on failure.
     """
-    result = await _generate(DISCLOSURE_SYSTEM_PROMPT, f"Analyze this PBM disclosure document for DOL compliance:\n\n{text[:12000]}", 16000)
+    result = await _generate(DISCLOSURE_SYSTEM_PROMPT, f"Analyze this PBM disclosure document for DOL compliance:\n\n{text[:12000]}", 8000)
     parsed = json.loads(result)
     parsed["_generated_by"] = "ai"
     return parsed
+
+
+DISCLOSURE_CROSS_REF_PROMPT = """You are a PBM disclosure compliance analyst cross-referencing a PBM's disclosure report against the actual PBM contract terms.
+
+You are given two inputs:
+1. The PBM disclosure document text
+2. Key terms extracted from the PBM contract analysis (rebate passthrough %, audit scope, spread pricing terms, formulary provisions, etc.)
+
+Your job is to find DISCREPANCIES between what the contract promises and what the disclosure actually reports. For each discrepancy, cite the specific contract section and the specific disclosure section/number.
+
+Return structured JSON:
+
+{
+  "discrepancies": [
+    {
+      "category": "Rebates|Pricing|Audit|Formulary|Specialty|Administrative",
+      "severity": "high|medium|low",
+      "contract_says": "what the contract promises, citing the section number",
+      "disclosure_says": "what the disclosure reports or omits",
+      "gap": "plain-English description of the discrepancy and its financial implication",
+      "recommendation": "what the plan sponsor should demand"
+    }
+  ],
+  "confirmations": [
+    {
+      "category": str,
+      "contract_says": str,
+      "disclosure_confirms": str
+    }
+  ],
+  "overall_alignment_score": int (0-100, where 100 = disclosure fully matches contract terms),
+  "summary": "1-2 sentence summary of the disclosure's alignment with contract terms"
+}
+
+RULES:
+- Only flag discrepancies you can defend by pointing at specific language in both documents.
+- If the disclosure omits something the contract requires to be disclosed, that IS a discrepancy.
+- If the disclosure reports a number that differs from a contract guarantee, cite both numbers.
+- Do NOT invent contract terms or disclosure data that are not in the inputs.
+"""
+
+
+async def analyze_disclosure_with_contract(disclosure_text: str, contract_analysis: dict) -> dict:
+    """
+    Cross-reference a PBM disclosure against a contract analysis.
+    Returns discrepancies, confirmations, and an alignment score.
+    """
+    # Extract the key contract terms the AI needs for comparison
+    contract_summary = {
+        "rebate_passthrough": contract_analysis.get("rebate_passthrough"),
+        "eligible_rebate_definition": contract_analysis.get("eligible_rebate_definition"),
+        "spread_pricing": contract_analysis.get("spread_pricing"),
+        "audit_rights": contract_analysis.get("audit_rights"),
+        "formulary_clauses": contract_analysis.get("formulary_clauses"),
+        "specialty_channel": contract_analysis.get("specialty_channel"),
+        "mac_pricing": contract_analysis.get("mac_pricing"),
+        "termination_provisions": contract_analysis.get("termination_provisions"),
+        "contract_identification": contract_analysis.get("contract_identification"),
+        "financial_exposure": contract_analysis.get("financial_exposure"),
+    }
+    result = await _generate(
+        DISCLOSURE_CROSS_REF_PROMPT,
+        f"Cross-reference this PBM disclosure against the contract terms:\n\n"
+        f"DISCLOSURE DOCUMENT:\n{disclosure_text[:8000]}\n\n"
+        f"CONTRACT TERMS:\n{json.dumps(contract_summary, indent=2, default=str)[:6000]}",
+        6000,
+    )
+    return json.loads(result)
 
 
 # ─── Audit Letter Generation ────────────────────────────────────────────────────
