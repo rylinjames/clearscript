@@ -10,7 +10,6 @@ import {
   Mail,
   CalendarClock,
   ShieldCheck,
-  ScrollText,
   ChevronDown,
   Menu,
   X,
@@ -33,8 +32,7 @@ const navGroups: NavGroup[] = [
     label: "Analyze",
     items: [
       { href: "/contracts", label: "Plan Intelligence", icon: FileText },
-      { href: "/disclosure", label: "Disclosure Analyzer", icon: Search },
-      { href: "/spc", label: "Plan Doc Parser", icon: ScrollText },
+      { href: "/disclosure", label: "Disclosure Review", icon: Search },
     ],
   },
   {
