@@ -139,33 +139,65 @@ async def health():
 
 @app.get("/api/dashboard/stats")
 async def dashboard_stats():
-    """Aggregate stats for the dashboard."""
-    from services.db_service import _get_conn, load_latest_contract_analysis
-    from services.data_service import get_claims_status
-    from services.ai_service import enrich_contract_analysis
+    """Aggregate stats for the dashboard — all real data, no placeholders."""
+    from services.db_service import (
+        list_contract_analyses, load_latest_contract_analysis,
+        load_claims_for_contract, load_plan_doc, load_cross_reference,
+    )
 
-    contracts_count = 0
-    latest_analysis = None
-    claims_status = {"custom_data_loaded": False, "claims_count": 0}
+    # Load all contracts with their enrichment status
+    contracts_list = []
     try:
-        conn = _get_conn()
-        row = conn.execute("SELECT COUNT(*) as cnt FROM contract_analyses").fetchone()
-        contracts_count = row[0] if row else 0
+        contracts_list = list_contract_analyses(limit=50)
     except Exception:
         pass
-    finally:
+
+    # For each contract, check what's been uploaded
+    contracts_with_status = []
+    for c in contracts_list:
+        cid = c.get("id")
+        has_claims = False
+        has_plan_doc = False
+        has_cross_ref = False
+        notice_deadline = None
         try:
-            conn.close()
+            has_claims = bool(load_claims_for_contract(cid))
         except Exception:
             pass
+        try:
+            has_plan_doc = bool(load_plan_doc(cid))
+        except Exception:
+            pass
+        try:
+            has_cross_ref = bool(load_cross_reference(cid))
+        except Exception:
+            pass
+        # Extract notice deadline from the analysis JSON if available
+        try:
+            import json
+            analysis = json.loads(c.get("analysis_json", "{}") if "analysis_json" in c else "{}")
+            ci = analysis.get("contract_identification", {})
+            if isinstance(ci, dict):
+                notice_deadline = ci.get("notice_deadline_date")
+        except Exception:
+            pass
+        contracts_with_status.append({
+            "id": cid,
+            "filename": c.get("filename"),
+            "analysis_date": c.get("analysis_date"),
+            "deal_score": c.get("deal_score"),
+            "risk_level": c.get("risk_level"),
+            "has_claims": has_claims,
+            "has_plan_doc": has_plan_doc,
+            "has_cross_ref": has_cross_ref,
+            "notice_deadline": notice_deadline,
+        })
+
+    latest_analysis = None
     try:
         latest_analysis = load_latest_contract_analysis()
     except Exception:
         latest_analysis = None
-    try:
-        claims_status = get_claims_status()
-    except Exception:
-        claims_status = {"custom_data_loaded": False, "claims_count": 0}
 
     latest = (latest_analysis or {}).get("analysis", {}) if latest_analysis else {}
     if isinstance(latest, dict) and latest:
@@ -184,30 +216,17 @@ async def dashboard_stats():
     benchmark_observations = latest.get("benchmark_observations", []) if isinstance(latest, dict) else []
 
     return {
-        "claims_loaded": bool(claims_status.get("custom_data_loaded")),
-        "claims_count": int(claims_status.get("claims_count", 0) or 0),
-        "contracts_parsed": contracts_count,
-        "modules_active": 23,
-        "data_source": "plan_intelligence",
+        "contracts_parsed": len(contracts_list),
+        "contracts": contracts_with_status,
         "latest_analysis": {
             "filename": latest_analysis.get("filename") if latest_analysis else None,
             "analysis_date": latest_analysis.get("analysis_date") if latest_analysis else None,
             "deal_score": weighted.get("deal_score"),
-            "weighted_risk_score": weighted.get("weighted_risk_score"),
             "risk_level": weighted.get("risk_level"),
             "deal_diagnosis": latest.get("deal_diagnosis") if isinstance(latest, dict) else None,
-            "financial_exposure_summary": exposure.get("summary") if isinstance(exposure, dict) else None,
-            "financial_exposure_mode": exposure.get("mode") if isinstance(exposure, dict) else None,
-            "spread_exposure_estimate": exposure.get("spread_exposure", {}).get("estimate") if isinstance(exposure, dict) and isinstance(exposure.get("spread_exposure"), dict) else None,
             "control_posture_label": control_posture.get("label") if isinstance(control_posture, dict) else None,
             "control_posture_summary": control_posture.get("summary") if isinstance(control_posture, dict) else None,
-            "structural_risk_headline": structural_override.get("headline") if isinstance(structural_override, dict) else None,
-            "structural_risk_level": structural_override.get("level") if isinstance(structural_override, dict) else None,
-            "structural_risk_triggered": structural_override.get("triggered") if isinstance(structural_override, dict) else None,
-            "benchmark_observations": benchmark_observations[:4] if isinstance(benchmark_observations, list) else [],
-            "top_risks": top_risks[:3] if isinstance(top_risks, list) else [],
-            "immediate_actions": immediate_actions[:3] if isinstance(immediate_actions, list) else [],
-        },
+        } if latest_analysis else None,
     }
 
 

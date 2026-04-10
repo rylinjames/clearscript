@@ -20,9 +20,9 @@ def test_dashboard_stats(client):
     assert r.status_code == 200
     data = r.json()
     # These are the exact keys the frontend dashboard reads.
-    for key in ("claims_loaded", "claims_count", "contracts_parsed", "modules_active", "latest_analysis"):
+    for key in ("contracts_parsed", "contracts", "latest_analysis"):
         assert key in data
-    assert data["modules_active"] == 23
+    assert isinstance(data["contracts"], list)
 
 
 def test_dashboard_stats_survives_bad_analysis_shape(client, mock_ai, sample_contract_text):
