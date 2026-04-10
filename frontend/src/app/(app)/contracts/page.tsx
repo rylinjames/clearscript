@@ -1432,19 +1432,23 @@ function ContractsPageInner() {
           {/* Supporting indicators strip — three smaller cards beneath
               the hero. Each provides a different lens on the same "bad
               contract" finding (control, structural override, clause
-              mix), but none competes with the headline Deal Score. */}
+              mix), but none competes with the headline Deal Score.
+              The grid auto-equalizes card heights so the row stays
+              tidy even when one card's description is longer than the
+              others. No line-clamp — the full text needs to be readable
+              for the indicators to be useful. */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
             <div className={`rounded-lg border p-3 ${riskLevelStyles(controlPosture?.level)}`}>
               <p className="text-[10px] font-semibold uppercase tracking-wider opacity-80 mb-1">Control Posture</p>
               <p className="text-sm font-bold leading-tight">{controlPosture?.label || "Pending analysis"}</p>
-              <p className="text-[11px] mt-1 leading-snug opacity-90 line-clamp-2">{controlPosture?.summary || "Who controls pricing, rebates, specialty, and audit rights."}</p>
+              <p className="text-[11px] mt-1 leading-snug opacity-90">{controlPosture?.summary || "Who controls pricing, rebates, specialty, and audit rights."}</p>
             </div>
             <div className={`rounded-lg border p-3 ${riskLevelStyles(structuralRiskOverride?.triggered ? structuralRiskOverride?.level : "low")}`}>
               <p className="text-[10px] font-semibold uppercase tracking-wider opacity-80 mb-1">Structural Risk</p>
               <p className="text-sm font-bold leading-tight">
                 {structuralRiskOverride?.triggered ? "Override triggered" : "Weighted only"}
               </p>
-              <p className="text-[11px] mt-1 leading-snug opacity-90 line-clamp-2">
+              <p className="text-[11px] mt-1 leading-snug opacity-90">
                 {structuralRiskOverride?.rationale || "No structural override was required."}
               </p>
             </div>
@@ -1459,7 +1463,7 @@ function ContractsPageInner() {
               <p className="text-sm font-bold leading-tight">
                 {complianceCount!.good} of {complianceCount!.good + complianceCount!.warning + complianceCount!.critical} employer-favorable
               </p>
-              <p className="text-[11px] mt-1 leading-snug opacity-90 line-clamp-2">
+              <p className="text-[11px] mt-1 leading-snug opacity-90">
                 Typical: {PEER_BENCHMARK.employer_favorable_clauses_median} of {PEER_BENCHMARK.total_clauses_typical}.
                 {" "}{complianceCount!.warning} balanced; {complianceCount!.critical} PBM-favorable.
               </p>
