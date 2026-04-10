@@ -4,7 +4,10 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from services.ai_service import analyze_disclosure, analyze_disclosure_with_contract
-from services.db_service import load_contract_analysis_by_id
+from services.db_service import (
+    load_contract_analysis_by_id,
+    save_disclosure_analysis, list_disclosure_analyses, load_disclosure_analysis_by_id,
+)
 from services.usage_service import log_file_upload
 
 logger = logging.getLogger(__name__)
@@ -57,12 +60,37 @@ async def analyze_disclosure_doc(file: UploadFile = File(...)):
     except Exception as e:
         logger.debug(f"file_upload logging failed: {e}")
 
+    # Persist the analysis
+    score = result.get("completeness_score", 0) if isinstance(result, dict) else 0
+    try:
+        row_id = save_disclosure_analysis(file.filename, result, score)
+    except Exception as e:
+        logger.warning(f"Failed to persist disclosure analysis: {e}")
+        row_id = None
+
     return {
         "status": "success",
+        "id": row_id,
         "filename": file.filename,
         "file_size": len(content),
         "analysis": result,
     }
+
+
+@router.get("/list")
+async def list_disclosures():
+    """Return all persisted disclosure analyses, most recent first."""
+    items = list_disclosure_analyses(limit=100)
+    return {"status": "success", "count": len(items), "disclosures": items}
+
+
+@router.get("/{disclosure_id}")
+async def get_disclosure(disclosure_id: int):
+    """Fetch one persisted disclosure analysis by id."""
+    item = load_disclosure_analysis_by_id(disclosure_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"No disclosure analysis with id={disclosure_id}")
+    return {"status": "success", "disclosure": item}
 
 
 @router.post("/cross-reference")

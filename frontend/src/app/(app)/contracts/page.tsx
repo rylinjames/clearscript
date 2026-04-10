@@ -578,6 +578,19 @@ function ContractsPageInner() {
         analysis: contract.analysis,
       });
       setLoadedFromHistoryId(contract.id);
+
+      // Restore persisted plan doc + cross-reference if they exist
+      // for this contract. This is what makes "click a past contract
+      // and see everything" work — claims are restored via the
+      // useEffect on contractRowId, and plan doc + cross-ref are
+      // restored here from the GET response.
+      if (contract.has_plan_doc && contract.plan_doc_benefits) {
+        setPlanBenefits(contract.plan_doc_benefits as PlanBenefits);
+        setPlanDocType(contract.plan_doc_type || null);
+      }
+      if (contract.has_cross_reference && contract.cross_reference) {
+        setCrossRef(contract.cross_reference as CrossRefResult);
+      }
       // Scroll to the top of the analysis so the user sees the
       // Deal Diagnosis hero immediately.
       if (typeof window !== "undefined") {
@@ -691,7 +704,10 @@ function ContractsPageInner() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/contracts/upload-plan-document", {
+      const url = contractRowId
+        ? `/api/contracts/upload-plan-document?contract_id=${contractRowId}`
+        : "/api/contracts/upload-plan-document";
+      const res = await fetch(url, {
         method: "POST",
         body: formData,
       });
@@ -728,6 +744,7 @@ function ContractsPageInner() {
         body: JSON.stringify({
           contract_analysis: contractData,
           plan_benefits: planData,
+          contract_id: contractRowId,
         }),
       });
       if (!res.ok) {
@@ -1855,10 +1872,22 @@ function ContractsPageInner() {
             <div className="flex items-center gap-2 mb-4">
               <BookOpen className="w-5 h-5 text-primary-600" />
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Plan Document (SBC / SPD / EOC)</h2>
+              {planBenefits && (
+                <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <CheckCircle2 className="w-3 h-3" />
+                  {planDocType || "Plan doc"} loaded
+                </span>
+              )}
             </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Upload the associated plan document to extract benefit structure and cross-reference against the contract.
-            </p>
+            {planBenefits ? (
+              <p className="text-sm text-emerald-700 mb-4">
+                Plan document is loaded for this contract. The cross-reference analysis below reflects your plan&apos;s benefits. Upload a new document to replace.
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500 mb-4">
+                Upload the associated plan document to extract benefit structure and cross-reference against the contract.
+              </p>
+            )}
             <FileUpload
               onFileSelect={handlePlanDocUpload}
               label="Upload SBC, SPD, EOC, or COC (PDF or TXT)"

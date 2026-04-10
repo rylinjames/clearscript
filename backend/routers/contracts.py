@@ -8,7 +8,12 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import Response
 from services.pipeline_service import run_contract_pipeline, get_pipeline_status
 from services.audit_rights_service import score_audit_rights
-from services.db_service import save_contract_analysis, update_contract_analysis, list_contract_analyses, load_contract_analysis_by_id
+from services.db_service import (
+    save_contract_analysis, update_contract_analysis,
+    list_contract_analyses, load_contract_analysis_by_id,
+    save_plan_doc, load_plan_doc,
+    save_cross_reference, load_cross_reference,
+)
 from services.usage_service import log_file_upload, log_event
 from services.spc_service import parse_spc
 from services.plan_crossref_service import cross_reference_contract_and_plan
@@ -132,10 +137,12 @@ async def upload_contract(file: UploadFile = File(...)):
 
 
 @router.post("/upload-plan-document")
-async def upload_plan_document(file: UploadFile = File(...)):
+async def upload_plan_document(file: UploadFile = File(...), contract_id: int | None = None):
     """
-    Step 2: Upload a plan document (SBC, SPD, EOC/COC) for benefit extraction.
-    Reuses the SPC parser to extract structured benefit data from plan documents.
+    Upload a plan document (SBC, SPD, EOC/COC) for benefit extraction.
+    If contract_id is provided, the parsed benefits are persisted and
+    associated with that contract so they load automatically when the
+    user revisits the analysis.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -168,6 +175,13 @@ async def upload_plan_document(file: UploadFile = File(...)):
     # Parse using SPC service (handles SBC/SPD/EOC)
     benefits = await parse_spc(text)
 
+    # Persist the parsed benefits if scoped to a contract
+    if contract_id is not None:
+        try:
+            save_plan_doc(contract_id, file.filename, benefits, doc_type)
+        except Exception as e:
+            logger.warning(f"Failed to persist plan doc for contract {contract_id}: {e}")
+
     return {
         "status": "success",
         "filename": file.filename,
@@ -175,21 +189,20 @@ async def upload_plan_document(file: UploadFile = File(...)):
         "extracted_text_length": len(text),
         "document_type": doc_type,
         "benefits": benefits,
+        "contract_id": contract_id,
     }
 
 
 @router.post("/cross-reference")
 async def cross_reference_endpoint(request: dict):
     """
-    Step 3: Cross-reference PBM contract analysis against plan document benefits.
-    Flags mismatches between contract guarantees and actual plan design.
-
-    Expects JSON body with:
-    - contract_analysis: output from contract parsing
-    - plan_benefits: output from plan document parsing
+    Cross-reference PBM contract analysis against plan document benefits.
+    If contract_id is in the request body, persists the result so it
+    loads automatically when the user revisits this contract.
     """
     contract_analysis = request.get("contract_analysis")
     plan_benefits = request.get("plan_benefits")
+    contract_id = request.get("contract_id")
 
     if not contract_analysis or not plan_benefits:
         raise HTTPException(
@@ -199,9 +212,17 @@ async def cross_reference_endpoint(request: dict):
 
     result = await cross_reference_contract_and_plan(contract_analysis, plan_benefits)
 
+    # Persist if scoped to a contract
+    if contract_id is not None:
+        try:
+            save_cross_reference(int(contract_id), result)
+        except Exception as e:
+            logger.warning(f"Failed to persist cross-ref for contract {contract_id}: {e}")
+
     return {
         "status": "success",
         "cross_reference": result,
+        "contract_id": contract_id,
     }
 
 
@@ -350,7 +371,7 @@ async def get_contract(contract_id: int):
     item = load_contract_analysis_by_id(contract_id)
     if not item:
         raise HTTPException(status_code=404, detail=f"No contract analysis with id={contract_id}")
-    # Check if this contract has associated claims
+    # Check if this contract has associated claims, plan doc, and cross-ref
     try:
         from services.db_service import load_claims_for_contract
         claims_info = load_claims_for_contract(contract_id)
@@ -360,6 +381,25 @@ async def get_contract(contract_id: int):
             item["claims_count"] = claims_info.get("claims_count")
     except Exception:
         item["has_claims"] = False
+
+    try:
+        plan_doc_info = load_plan_doc(contract_id)
+        item["has_plan_doc"] = bool(plan_doc_info)
+        if plan_doc_info:
+            item["plan_doc_filename"] = plan_doc_info.get("filename")
+            item["plan_doc_type"] = plan_doc_info.get("document_type")
+            item["plan_doc_benefits"] = plan_doc_info.get("benefits")
+    except Exception:
+        item["has_plan_doc"] = False
+
+    try:
+        crossref_info = load_cross_reference(contract_id)
+        item["has_cross_reference"] = bool(crossref_info)
+        if crossref_info:
+            item["cross_reference"] = crossref_info.get("result")
+    except Exception:
+        item["has_cross_reference"] = False
+
     return {"status": "success", "contract": item}
 
 

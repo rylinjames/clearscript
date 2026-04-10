@@ -213,6 +213,33 @@ SQLITE_SCHEMA = [
         user_agent TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS uploaded_plan_docs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        contract_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        upload_date TEXT DEFAULT (datetime('now')),
+        benefits_json TEXT NOT NULL,
+        document_type TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cross_reference_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        contract_id INTEGER NOT NULL,
+        upload_date TEXT DEFAULT (datetime('now')),
+        result_json TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS disclosure_analyses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        filename TEXT NOT NULL,
+        analysis_date TEXT DEFAULT (datetime('now')),
+        analysis_json TEXT NOT NULL,
+        completeness_score INTEGER
+    )
+    """,
 ]
 
 # Postgres-flavored DDL — same schema, native types.
@@ -303,6 +330,33 @@ POSTGRES_SCHEMA = [
         user_id TEXT,
         session_id TEXT,
         user_agent TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS uploaded_plan_docs (
+        id BIGSERIAL PRIMARY KEY,
+        contract_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        upload_date TIMESTAMPTZ DEFAULT NOW(),
+        benefits_json TEXT NOT NULL,
+        document_type TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cross_reference_results (
+        id BIGSERIAL PRIMARY KEY,
+        contract_id INTEGER NOT NULL,
+        upload_date TIMESTAMPTZ DEFAULT NOW(),
+        result_json TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS disclosure_analyses (
+        id BIGSERIAL PRIMARY KEY,
+        filename TEXT NOT NULL,
+        analysis_date TIMESTAMPTZ DEFAULT NOW(),
+        analysis_json TEXT NOT NULL,
+        completeness_score INTEGER
     )
     """,
 ]

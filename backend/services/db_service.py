@@ -332,6 +332,176 @@ def get_analysis_history(analysis_type: Optional[str] = None, limit: int = 20) -
         conn.close()
 
 
+# ─── Plan Documents per Contract ─────────────────────────────────────────────
+
+
+def save_plan_doc(contract_id: int, filename: str, benefits: dict, document_type: str | None = None) -> int:
+    """Save parsed plan document benefits scoped to a contract. Replaces any previous plan doc for this contract."""
+    conn = database.get_conn()
+    try:
+        database.execute(conn, "DELETE FROM uploaded_plan_docs WHERE contract_id = ?", (contract_id,))
+        benefits_json = json.dumps(benefits, default=str)
+        row_id = database.execute_insert(
+            conn,
+            "INSERT INTO uploaded_plan_docs (contract_id, filename, benefits_json, document_type) VALUES (?, ?, ?, ?)",
+            (contract_id, filename, benefits_json, document_type),
+        )
+        conn.commit()
+        return row_id
+    except Exception as e:
+        logger.error(f"Failed to save plan doc for contract {contract_id}: {e}")
+        raise
+    finally:
+        conn.close()
+
+
+def load_plan_doc(contract_id: int) -> Optional[Dict[str, Any]]:
+    """Load the saved plan document for a contract."""
+    conn = database.get_conn()
+    try:
+        row = database.execute(
+            conn,
+            "SELECT filename, upload_date, benefits_json, document_type FROM uploaded_plan_docs WHERE contract_id = ? ORDER BY id DESC LIMIT 1",
+            (contract_id,),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            benefits = json.loads(row[2])
+        except json.JSONDecodeError:
+            return None
+        return {
+            "filename": row[0],
+            "upload_date": str(row[1]) if row[1] else None,
+            "benefits": benefits,
+            "document_type": row[3],
+        }
+    except Exception as e:
+        logger.error(f"Failed to load plan doc for contract {contract_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+# ─── Cross-Reference Results per Contract ────────────────────────────────────
+
+
+def save_cross_reference(contract_id: int, result: dict) -> int:
+    """Save cross-reference results scoped to a contract. Replaces any previous result."""
+    conn = database.get_conn()
+    try:
+        database.execute(conn, "DELETE FROM cross_reference_results WHERE contract_id = ?", (contract_id,))
+        result_json = json.dumps(result, default=str)
+        row_id = database.execute_insert(
+            conn,
+            "INSERT INTO cross_reference_results (contract_id, result_json) VALUES (?, ?)",
+            (contract_id, result_json),
+        )
+        conn.commit()
+        return row_id
+    except Exception as e:
+        logger.error(f"Failed to save cross-ref for contract {contract_id}: {e}")
+        raise
+    finally:
+        conn.close()
+
+
+def load_cross_reference(contract_id: int) -> Optional[Dict[str, Any]]:
+    """Load saved cross-reference results for a contract."""
+    conn = database.get_conn()
+    try:
+        row = database.execute(
+            conn,
+            "SELECT upload_date, result_json FROM cross_reference_results WHERE contract_id = ? ORDER BY id DESC LIMIT 1",
+            (contract_id,),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            result = json.loads(row[1])
+        except json.JSONDecodeError:
+            return None
+        return {"upload_date": str(row[0]) if row[0] else None, "result": result}
+    except Exception as e:
+        logger.error(f"Failed to load cross-ref for contract {contract_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+# ─── Disclosure Analyses ─────────────────────────────────────────────────────
+
+
+def save_disclosure_analysis(filename: str, analysis: dict, completeness_score: int = 0) -> int:
+    conn = database.get_conn()
+    try:
+        analysis_json = json.dumps(analysis, default=str)
+        row_id = database.execute_insert(
+            conn,
+            "INSERT INTO disclosure_analyses (filename, analysis_json, completeness_score) VALUES (?, ?, ?)",
+            (filename, analysis_json, completeness_score),
+        )
+        conn.commit()
+        return row_id
+    except Exception as e:
+        logger.error(f"Failed to save disclosure analysis: {e}")
+        raise
+    finally:
+        conn.close()
+
+
+def list_disclosure_analyses(limit: int = 50) -> List[Dict[str, Any]]:
+    conn = database.get_conn()
+    try:
+        rows = database.execute(
+            conn,
+            "SELECT id, filename, analysis_date, completeness_score FROM disclosure_analyses ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "filename": r[1],
+                "analysis_date": str(r[2]) if r[2] else None,
+                "completeness_score": r[3],
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        logger.error(f"Failed to list disclosure analyses: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def load_disclosure_analysis_by_id(disclosure_id: int) -> Optional[Dict[str, Any]]:
+    conn = database.get_conn()
+    try:
+        row = database.execute(
+            conn,
+            "SELECT id, filename, analysis_date, analysis_json, completeness_score FROM disclosure_analyses WHERE id = ?",
+            (disclosure_id,),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            analysis = json.loads(row[3])
+        except json.JSONDecodeError:
+            return None
+        return {
+            "id": row[0],
+            "filename": row[1],
+            "analysis_date": str(row[2]) if row[2] else None,
+            "analysis": analysis,
+            "completeness_score": row[4],
+        }
+    except Exception as e:
+        logger.error(f"Failed to load disclosure analysis by id={disclosure_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 # Initialize schema on import. Safe to call repeatedly — every CREATE
 # TABLE has IF NOT EXISTS.
 _ensure_db()
