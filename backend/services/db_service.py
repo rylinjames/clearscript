@@ -139,7 +139,7 @@ def clear_claims(contract_id: Optional[int] = None) -> None:
 
 # ─── Contract analyses ───────────────────────────────────────────────────────
 
-def save_contract_analysis(filename: str, analysis: dict, risk_score: int, audit_rights_score: int) -> int:
+def save_contract_analysis(filename: str, analysis: dict, risk_score: int = 0, audit_rights_score: int = 0) -> int:
     conn = database.get_conn()
     try:
         analysis_json = json.dumps(analysis, default=str)
@@ -152,6 +152,32 @@ def save_contract_analysis(filename: str, analysis: dict, risk_score: int, audit
         return row_id
     except Exception as e:
         logger.error(f"Failed to save contract analysis: {e}")
+        raise
+    finally:
+        conn.close()
+
+
+def update_contract_analysis(contract_id: int, analysis: dict) -> None:
+    """Update an existing contract analysis row in-place (e.g. after
+    re-enrichment with newly uploaded claims data). Does NOT create a
+    duplicate row."""
+    conn = database.get_conn()
+    try:
+        analysis_json = json.dumps(analysis, default=str)
+        # Recompute the derived score fields so the list view stays
+        # consistent with the updated analysis.
+        wa = analysis.get("weighted_assessment", {}) if isinstance(analysis, dict) else {}
+        risk_score = int(analysis.get("overall_risk_score", 0) or 0)
+        audit = analysis.get("audit_rights", {}) if isinstance(analysis, dict) else {}
+        audit_score = int(audit.get("score", 0) or 0) if isinstance(audit, dict) else 0
+        database.execute(
+            conn,
+            "UPDATE contract_analyses SET analysis_json = ?, risk_score = ?, audit_rights_score = ? WHERE id = ?",
+            (analysis_json, risk_score, audit_score, contract_id),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update contract analysis id={contract_id}: {e}")
         raise
     finally:
         conn.close()

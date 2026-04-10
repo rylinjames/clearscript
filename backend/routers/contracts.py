@@ -8,7 +8,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import Response
 from services.pipeline_service import run_contract_pipeline, get_pipeline_status
 from services.audit_rights_service import score_audit_rights
-from services.db_service import save_contract_analysis, list_contract_analyses, load_contract_analysis_by_id
+from services.db_service import save_contract_analysis, update_contract_analysis, list_contract_analyses, load_contract_analysis_by_id
 from services.usage_service import log_file_upload, log_event
 from services.spc_service import parse_spc
 from services.plan_crossref_service import cross_reference_contract_and_plan
@@ -415,11 +415,13 @@ async def re_enrich_contract(contract_id: int):
     _attach_dollar_exposure(analysis)
     _attach_redline_savings(analysis)
 
-    # Persist the updated analysis
+    # Update the existing row in-place — NOT insert a new one.
+    # The previous code called save_contract_analysis which always
+    # inserted, creating duplicates in the Recent Analyses picker.
     try:
-        save_contract_analysis(item.get("filename", "unknown"), analysis)
+        update_contract_analysis(contract_id, analysis)
     except Exception as e:
-        logger.warning(f"Could not re-save enriched analysis: {e}")
+        logger.warning(f"Could not update enriched analysis: {e}")
 
     return {
         "status": "success",
