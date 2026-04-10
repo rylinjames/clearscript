@@ -583,17 +583,11 @@ def generate_contract_report(
         # Total Annual Leakage banner — uses the totals computed above.
         # Mirrors the live-UI hero banner so a CFO reading the PDF sees
         # the bottom-line number first instead of mentally adding rows.
-        custom_loaded = bool(
-            isinstance(financial_exposure.get("claims_context"), dict)
-            and financial_exposure["claims_context"].get("custom_data_loaded")
-        )
+        # When no real claims have been uploaded the totals are 0 and
+        # we render percentage ranges instead in the else branch below.
         if total_leakage_low > 0 or total_leakage_high > 0:
             banner_label = "TOTAL ESTIMATED ANNUAL LEAKAGE"
-            banner_basis = (
-                "Based on uploaded claims data."
-                if custom_loaded
-                else "Illustrative — based on a representative 1,000-employee self-insured plan. Upload claims data to recompute against actual spend."
-            )
+            banner_basis = "Based on uploaded claims data."
             banner_table = Table(
                 [
                     [Paragraph(banner_label, ParagraphStyle("LeakLabel", fontName="Helvetica-Bold", fontSize=8, textColor=RED))],
@@ -615,6 +609,46 @@ def generate_contract_report(
             ]))
             story.append(banner_table)
             story.append(Spacer(1, 8))
+        else:
+            # No real claims uploaded → no dollar denominators → render
+            # the percentage ranges from the AI's estimate strings
+            # instead of fabricating dollar figures from a synthetic
+            # benchmark plan. Honest representation of what the AI
+            # actually knows.
+            pct_lines = []
+            for label, key in [
+                ("Rebate leakage", "rebate_leakage"),
+                ("Spread exposure", "spread_exposure"),
+                ("Specialty control", "specialty_control"),
+            ]:
+                item = financial_exposure.get(key) if isinstance(financial_exposure, dict) else None
+                if isinstance(item, dict) and item.get("estimate"):
+                    pct_lines.append(f"<b>{label}:</b> {item.get('estimate')}")
+            if pct_lines:
+                banner_table = Table(
+                    [
+                        [Paragraph("ESTIMATED ANNUAL LEAKAGE", ParagraphStyle("LeakLabel", fontName="Helvetica-Bold", fontSize=8, textColor=RED))],
+                        [Paragraph(
+                            "<br/>".join(pct_lines),
+                            ParagraphStyle("LeakPctBody", fontName="Helvetica", fontSize=10, textColor=GRAY_900, leading=14),
+                        )],
+                        [Paragraph(
+                            "Upload your claims data on the Claims page to convert these percentage ranges into specific dollar figures for your plan.",
+                            ParagraphStyle("LeakBasis", fontName="Helvetica", fontSize=8, textColor=GRAY_500, leading=11),
+                        )],
+                    ],
+                    colWidths=[6.5 * inch],
+                )
+                banner_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#fecaca")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 14),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+                    ("TOPPADDING", (0, 0), (-1, -1), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ]))
+                story.append(banner_table)
+                story.append(Spacer(1, 8))
 
         exposure_rows = [["Area", "Level", "Directional Exposure", "Driver"]]
         for label, key in [

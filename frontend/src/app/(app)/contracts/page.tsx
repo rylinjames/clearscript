@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePageTitle } from "@/components/PageTitle";
 import FileUpload from "@/components/FileUpload";
 import StatusBadge from "@/components/StatusBadge";
-import DataSourceBanner from "@/components/DataSourceBanner";
 import AIAnalysisProgress from "@/components/AIAnalysisProgress";
 import {
   FileText,
@@ -904,7 +903,6 @@ export default function ContractsPage() {
         </p>
       </div>
 
-      <DataSourceBanner />
 
       <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
@@ -1374,10 +1372,12 @@ export default function ContractsPage() {
 
           {financialExposure && (() => {
             // Compute total annual leakage = sum of the three category
-            // dollar ranges. This is the single number a CFO actually
-            // cares about — previously the user had to mentally add
-            // three separate ranges to get it. Surface it as the
-            // headline of the Supporting Leakage Estimates section.
+            // dollar ranges. Only renders dollars when the user has
+            // uploaded real claims; otherwise we fall back to the
+            // percentage ranges from the AI's estimate strings rather
+            // than fabricating dollar denominators from a synthetic
+            // benchmark plan. The platform should never display a fake
+            // number, even with a disclaimer.
             const entries: FinancialExposureEntry[] = [
               financialExposure.rebate_leakage,
               financialExposure.spread_exposure,
@@ -1401,11 +1401,11 @@ export default function ContractsPage() {
                   )}
                   {!customLoaded && (
                     <p className="text-xs text-amber-700 mt-2">
-                      Dollar figures below are illustrative — based on a representative 1,000-employee self-insured plan. Upload your real claims on the Claims page to recompute against your actual spend.
+                      Estimates below are expressed as percentages of plan spend. Upload your claims data to convert these into your specific dollar figures.
                     </p>
                   )}
                 </div>
-                {hasTotal && (
+                {hasTotal ? (
                   <div className="px-6 py-5 bg-gradient-to-r from-red-50 to-amber-50 border-b border-gray-200">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700 mb-1">Total Estimated Annual Leakage</p>
                     <p className="text-3xl font-bold text-gray-900">
@@ -1416,6 +1416,26 @@ export default function ContractsPage() {
                     </p>
                     <p className="text-xs text-gray-600 mt-1">
                       Sum of rebate leakage, spread exposure, and specialty channel control across all three categories below.
+                    </p>
+                  </div>
+                ) : entries.length > 0 && (
+                  <div className="px-6 py-5 bg-gradient-to-r from-red-50 to-amber-50 border-b border-gray-200">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700 mb-1">Estimated Annual Leakage</p>
+                    <div className="space-y-1.5">
+                      {entries.map((e, i) => (
+                        e.estimate ? (
+                          <p key={i} className="text-sm text-gray-900">
+                            <span className="font-semibold">
+                              {i === 0 ? "Rebate leakage" : i === 1 ? "Spread exposure" : "Specialty control"}:
+                            </span>
+                            {" "}
+                            {e.estimate}
+                          </p>
+                        ) : null
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-2">
+                      Upload your claims data on the Claims page to convert these percentage ranges into specific dollar figures for your plan.
                     </p>
                   </div>
                 )}
@@ -2057,25 +2077,24 @@ export default function ContractsPage() {
         </>
       )}
 
-      {/* ═══ Sticky illustrative-data CTA ═══
-          Renders only when a contract has been analyzed AND the dollar
-          figures are coming from the benchmark 1,000-life plan, not real
-          uploaded claims. The banner sticks to the bottom of the viewport
-          so the user is reminded — every time they look at a leakage
-          number — that those figures get sharper after they upload claims.
-          Dismissable for the session so it doesn't nag users who are
-          intentionally evaluating against the benchmark.
+      {/* ═══ Sticky upload-claims CTA ═══
+          Renders when a contract has been analyzed but no real claims
+          have been uploaded — meaning the leakage section is showing
+          percentage ranges rather than dollar figures. The banner
+          sticks to the bottom of the viewport so the user is reminded
+          to upload their claims to unlock dollar-denominated estimates
+          for their specific plan. Dismissable for the session.
       */}
       {terms && !loading && financialExposure && !financialExposure.claims_context?.custom_data_loaded && !stickyClaimsDismissed && (
         <div className="fixed bottom-4 left-4 right-4 lg:left-72 lg:right-8 z-30">
           <div className="max-w-5xl mx-auto bg-amber-50 border border-amber-300 rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <p className="text-sm text-amber-900 flex-1 leading-snug">
-              <span className="font-semibold">Dollar figures above are illustrative</span> — based on a representative 1,000-employee self-insured plan.{" "}
+              <span className="font-semibold">Leakage shown as percentages.</span>{" "}
               <Link href="/claims" className="underline font-semibold text-amber-900 hover:text-amber-700">
-                Upload claims data
+                Upload your claims data
               </Link>
-              {" "}to recompute leakage estimates against your plan&apos;s actual spend.
+              {" "}to convert these into specific dollar figures for your plan.
             </p>
             <button
               type="button"
