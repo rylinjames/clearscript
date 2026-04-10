@@ -10,11 +10,17 @@ router = APIRouter(prefix="/api/benchmarks", tags=["benchmarks"])
 @router.get("/data")
 async def benchmark_data():
     """
-    Returns anonymized peer comparison data.
-    Metrics: unit cost per script, rebate passthrough %,
-    specialty drug spend %, generic dispensing rate.
-    Shows employer's rank vs peers.
+    Returns peer comparison data. Requires uploaded claims to compute
+    plan-specific metrics against peer benchmarks.
     """
+    from services.data_service import get_claims_status
+    status = get_claims_status()
+    if not status.get("custom_data_loaded"):
+        return {
+            "status": "no_data",
+            "message": "No claims data uploaded. Upload your pharmacy claims CSV on the Upload Claims page to see peer benchmarks.",
+            "benchmarks": None,
+        }
     result = generate_benchmarks()
 
     return {

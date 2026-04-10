@@ -15,5 +15,11 @@ async def ndc_jcode_analysis():
     Calculates rebate leakage from missing NDC billing.
     """
     claims = get_claims()
+    if not claims:
+        return {
+            "status": "no_data",
+            "message": "No claims data uploaded. Upload your pharmacy claims CSV on the Upload Claims page to see NDC vs J-code analysis.",
+            "ndc_analysis": None,
+        }
     result = analyze_ndc_jcode_gap(claims)
     return {"status": "success", "ndc_analysis": result}

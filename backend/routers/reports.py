@@ -10,10 +10,16 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.get("/audit")
 async def run_audit():
     """
-    Audit semiannual PBM report using synthetic claims data.
+    Audit semiannual PBM report using uploaded claims data.
     Cross-references against NADAC pricing to find discrepancies.
     """
     claims = get_claims()
+    if not claims:
+        return {
+            "status": "no_data",
+            "message": "No claims data uploaded. Upload your pharmacy claims CSV on the Upload Claims page to run the report audit.",
+            "audit": None,
+        }
 
     # Try to get real NADAC prices for top drugs
     top_ndcs = list(set(c["ndc"] for c in claims))[:10]

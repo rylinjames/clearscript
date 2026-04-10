@@ -1089,9 +1089,23 @@ _custom_claims_loaded = False
 _custom_claims_info: Dict[str, Any] = {}
 
 def get_claims() -> List[Dict[str, Any]]:
+    """Return the current claims dataset.
+
+    HONESTY POLICY: returns an empty list when no real claims have been
+    uploaded. The previous behavior — auto-generating 500 synthetic claims
+    with fabricated spread patterns, phantom pharmacies, and invented
+    rebate flows — meant every analyzer endpoint (spread, rebates,
+    reports, benchmarks) served fake results that were presented to
+    the user as if they were real analysis. Endpoints now get an empty
+    list and can return an appropriate "no data" response.
+
+    The synthetic `generate_claims()` function is NOT deleted — it's
+    still available for unit tests and local development. But it is no
+    longer called automatically by the production data path.
+    """
     global _claims_cache
     if _claims_cache is None:
-        _claims_cache = generate_claims(500)
+        return []
     return _claims_cache
 
 def set_claims_data(claims_list: List[Dict[str, Any]], info: Optional[Dict[str, Any]] = None) -> None:
@@ -1102,13 +1116,12 @@ def set_claims_data(claims_list: List[Dict[str, Any]], info: Optional[Dict[str, 
     _custom_claims_info = info or {}
 
 def reset_claims_data() -> None:
-    """Reset claims back to synthetic data."""
+    """Clear uploaded claims data. Does NOT regenerate synthetic data —
+    the platform shows empty states until the user uploads real claims."""
     global _claims_cache, _custom_claims_loaded, _custom_claims_info
     _claims_cache = None
     _custom_claims_loaded = False
     _custom_claims_info = {}
-    # Force regeneration
-    get_claims()
 
 def get_claims_status() -> Dict[str, Any]:
     """Return whether custom or synthetic claims are loaded."""

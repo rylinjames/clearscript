@@ -72,6 +72,6 @@ def test_claims_reset(client, sample_claims_csv):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "success"
-    # After reset, synthetic data should be back — claims_count > 0 from the
-    # fallback generator.
-    assert body["claims_count"] > 0
+    # After reset, claims are cleared — no synthetic regeneration.
+    # The platform shows empty states until the user uploads real claims.
+    assert body["claims_count"] == 0
