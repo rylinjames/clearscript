@@ -370,28 +370,45 @@ Return valid JSON with this structure:
   "compliance_flags": [
     {"issue": "description", "severity": "high", "favorability": "pbm_favorable", "recommendation": "what to do"}
   ],
-  "deal_diagnosis": "one-line plain-English diagnosis of the contract structure",
+  "deal_diagnosis": "one-line plain-English diagnosis leading with the dollar consequence (e.g. 'This contract leaks an estimated 3-8% of total Rx spend through narrow rebate definitions, retained spread, and exclusive specialty routing')",
   "financial_exposure": {
-    "summary": "directional financial exposure summary",
-    "rebate_leakage": {"level": "high", "estimate": "3-6% of brand spend", "driver": "narrow rebate definition"},
-    "spread_exposure": {"level": "high", "estimate": "1-3% of total claims spend", "driver": "spread retained by PBM"},
-    "specialty_control": {"level": "high", "estimate": "30-50% of total Rx spend subject to PBM channel control", "driver": "exclusive specialty routing"}
+    "summary": "1-2 sentence summary grounded in the contract's actual pricing, rebate, and channel terms",
+    "rebate_leakage": {"level": "high|moderate|low", "estimate": "percentage range of brand spend — derive from the rebate definition language and passthrough terms in THIS contract, not a default", "driver": "cite the specific contract section and clause language"},
+    "spread_exposure": {"level": "high|moderate|low", "estimate": "percentage range of total claims spend — derive from the spread/pricing terms in THIS contract", "driver": "cite the specific contract section"},
+    "specialty_control": {"level": "high|moderate|low", "estimate": "percentage of Rx spend subject to PBM channel control per THIS contract's specialty terms", "driver": "cite the specific contract section"}
   },
   "control_map": [
-    {"lever": "Rebates", "controller": "PBM", "assessment": "PBM retains control through exclusion-based rebate definition", "implication": "Plan cannot verify full manufacturer compensation"},
-    {"lever": "Pricing", "controller": "PBM", "assessment": "Spread pricing retained with limited transparency", "implication": "Plan cannot validate net claim economics"}
+    {"lever": "Rebates", "controller": "PBM|Shared|Employer", "assessment": "contract-specific assessment citing section numbers and quoting clause language", "implication": "contract-specific consequence citing the dollar or percentage impact from THIS contract's terms"},
+    {"lever": "Pricing", "controller": "PBM|Shared|Employer", "assessment": "...", "implication": "..."},
+    {"lever": "Specialty", "controller": "PBM|Shared|Employer", "assessment": "...", "implication": "..."},
+    {"lever": "Formulary", "controller": "PBM|Shared|Employer", "assessment": "...", "implication": "..."},
+    {"lever": "Audit / Data", "controller": "PBM|Shared|Employer", "assessment": "...", "implication": "..."}
   ],
   "top_risks": [
-    {"title": "Narrow rebate definition", "tier": 1, "severity": "high", "why_it_matters": "Passthrough promise is materially reduced", "recommendation": "Expand eligible rebate definition"},
-    {"title": "Spread pricing retained", "tier": 1, "severity": "high", "why_it_matters": "PBM can keep undisclosed margin", "recommendation": "Require pass-through pricing"},
-    {"title": "Restricted specialty control", "tier": 1, "severity": "high", "why_it_matters": "Highest-cost channel remains under PBM control", "recommendation": "Add vendor optionality and transparent specialty pricing"}
+    {"title": "contract-specific risk title", "tier": 1, "severity": "high|medium|low", "why_it_matters": "contract-specific explanation citing section numbers", "recommendation": "contract-specific action item tied to the specific clause language"}
+  ],
+  "benchmark_observations": [
+    {
+      "kind": "consideration",
+      "title": "contract-specific observation title (e.g. 'Rebate passthrough falls short of benchmark')",
+      "category": "Rebates|Pricing|Specialty|Audit|Formulary|Administrative|Governance",
+      "tier": 1,
+      "severity": "high|medium|low",
+      "benchmark_label": "what the employer-favorable benchmark looks like (e.g. 'Full manufacturer compensation passthrough')",
+      "benchmark": "description of the benchmark standard",
+      "benchmark_source": "specific citation — NASHP Model PBM Contract §X.Y, NASTAD PBM Contract Language Bank, statute, or named industry standard. Only cite sources whose standards you can articulate specifically.",
+      "observation": "what THIS contract actually says — cite section numbers and quote clause language",
+      "implication": "contract-specific consequence — reference dollar amounts, percentages, or section numbers from THIS contract",
+      "recommendation": "specific action tied to THIS contract's language",
+      "supporting_detail": "leakage estimate or audit implication grounded in THIS contract's terms, or null if no quantifiable impact"
+    }
   ],
   "immediate_actions": [
-    "Renegotiate eligible rebate definition before renewal",
-    "Require spread pricing prohibition or quarterly reconciliation",
-    "Expand audit rights to manufacturer contracts, network agreements, and specialty economics"
+    "contract-specific action item 1 — cite the section and the specific change needed",
+    "contract-specific action item 2",
+    "contract-specific action item 3"
   ],
-  "audit_implication": "state explicitly what the plan sponsor cannot verify under the current audit language",
+  "audit_implication": "state explicitly what the plan sponsor cannot verify under the current audit language — cite the specific audit section and list the categories of data that are excluded from audit scope",
   "contract_identification": {
     "plan_sponsor_name": "exact name of the employer / plan sponsor as written in the contract preamble",
     "pbm_name": "exact name of the PBM as written in the contract preamble",
@@ -463,6 +480,8 @@ KEY ANALYSIS RULES:
 11. AUDIT IMPLICATIONS: Move beyond missing-provision lists. State plainly when the current audit language means the plan sponsor cannot verify pricing, rebate flows, manufacturer compensation, or specialty economics.
 12. NO BOILERPLATE IMPLICATIONS: The `implication` and `assessment` fields on control_map entries, top_risks, observations, and benchmark cards must be SPECIFIC to the contract being analyzed. Reference exact section numbers, exact dollar amounts, exact percentages, or exact dispensing-fee/admin-fee figures from the contract whenever the contract supplies them. NEVER write generic phrases like "Plan cannot verify net claim economics" or "Plan loses negotiating leverage" — these are true of every PBM contract and provide zero analytical value. Bad: "Plan cannot verify pharmacy reimbursement." Good: "Section 3.4 prohibits the plan sponsor from auditing the difference between the AWP-15% billed amount and actual pharmacy reimbursement, so the $1.50/claim dispensing fee cannot be reconciled against pharmacy cost." If a generic phrase is the best you can do, the field should be omitted entirely rather than filled with filler.
 13. CONTRACT-GROUNDED LANGUAGE: Every analytical claim must be defensible by pointing at a specific clause. If you write "the rebate definition is narrow" you must be able to quote the language in the same sentence ("Section 4.4 defines rebates as 'only those payments specifically designated as rebates by manufacturers,' excluding admin fees and price protection"). Treat anything you can't ground in the contract text as an inference and either drop it or label it explicitly.
+14. NO DEFAULT VALUES: The example values in this JSON schema are structural guides, not defaults. Every estimate, recommendation, implication, and observation MUST be derived from the specific contract text being analyzed. If the contract does not contain enough information to produce a contract-specific value for a field, set that field to null rather than using a generic placeholder. The user will see these values and assume they were computed from their specific contract — do not betray that trust with template text.
+15. BENCHMARK OBSERVATIONS: Generate 4-7 benchmark_observations. Each must have a real benchmark_source you can defend. For each observation, quote the specific contract section that falls short of the benchmark. For "consideration" entries, pair each with a quantified supporting_detail (e.g. "Supporting leakage estimate: the Section 4.4 rebate exclusions affect an estimated 3-6% of brand spend based on the contract's passthrough structure"). For "strength" entries (employer-favorable terms), keep supporting_detail null and recommendation as "Preserve this language while renegotiating higher-impact terms."
 """
 
 TIER_WEIGHTS = {
@@ -1187,9 +1206,25 @@ def _ensure_audit_rights_redlines(analysis: dict) -> None:
         analysis["redline_suggestions"] = copy.deepcopy(_AUDIT_RIGHTS_CANONICAL_REDLINES)
         return
 
-    # Drop any existing redline whose section name contains "audit",
-    # then append the canonical 5. We deep-copy so downstream mutations
-    # (e.g. _attach_redline_savings) don't bleed back into the constant.
+    # Count how many audit-related redlines the AI generated. If it
+    # produced 3+ (meaning it followed the "split into discrete
+    # redlines" prompt instruction), keep the AI's contract-specific
+    # versions because they contain actual current_language quotes from
+    # the real contract. Only replace with the canonical pack when the
+    # AI returned fewer than 3 (i.e. it either generated a mega-redline
+    # or skipped audit rights entirely).
+    ai_audit_redlines = [
+        r for r in redlines
+        if isinstance(r, dict) and "audit" in str(r.get("section", "")).lower()
+    ]
+    if len(ai_audit_redlines) >= 3:
+        # AI produced enough discrete audit redlines — keep them. The
+        # AI's contract-specific language is better than the canonical
+        # pack's placeholder current_language.
+        return
+
+    # AI produced fewer than 3 audit redlines — replace with the
+    # canonical pack which guarantees coverage of all 5 audit topics.
     non_audit = [
         r for r in redlines
         if not (isinstance(r, dict) and "audit" in str(r.get("section", "")).lower())
@@ -1466,16 +1501,41 @@ def enrich_contract_analysis(analysis: dict) -> dict:
         top_risks = _derive_top_risks(analysis)
         analysis["top_risks"] = top_risks
 
-    if not analysis.get("financial_exposure"):
-        analysis["financial_exposure"] = _financial_exposure_for(analysis)
+    # Financial exposure: prefer the AI's contract-specific estimates,
+    # fall back to deterministic only for missing sub-fields. The AI now
+    # generates estimate ranges from the actual contract terms (e.g.
+    # "Section 4.4's exclusion-based rebate definition affects an
+    # estimated 3-6% of brand spend") rather than the backend stapling
+    # a static "3-6%" onto every contract that has a narrow definition.
+    ai_exposure = analysis.get("financial_exposure")
+    det_exposure = _financial_exposure_for(analysis)
+    if isinstance(ai_exposure, dict):
+        # AI returned financial_exposure — fill any missing sub-fields
+        # from the deterministic version.
+        for subkey in ("rebate_leakage", "spread_exposure", "specialty_control"):
+            if not isinstance(ai_exposure.get(subkey), dict):
+                ai_exposure[subkey] = det_exposure.get(subkey)
+            else:
+                # Fill missing fields within each sub-entry (e.g. AI
+                # returned estimate but not driver)
+                det_sub = det_exposure.get(subkey, {})
+                for field in ("level", "estimate", "driver"):
+                    if not ai_exposure[subkey].get(field):
+                        ai_exposure[subkey][field] = det_sub.get(field)
+        if not ai_exposure.get("summary"):
+            ai_exposure["summary"] = det_exposure.get("summary")
+        analysis["financial_exposure"] = ai_exposure
+    else:
+        analysis["financial_exposure"] = det_exposure
+    # Claims-backed exposure (from real uploaded claims) still overrides
+    # — this is real data, not hardcoded. But preserve AI-generated
+    # driver text where present.
     claims_backed_exposure = _claims_backed_exposure_for(analysis)
     if claims_backed_exposure:
         analysis["financial_exposure"] = claims_backed_exposure
-    # Convert percentage-range estimates ("3-6% of brand spend") into
-    # real dollar figures using the user's actual claims if uploaded,
-    # falling back to the synthetic dataset otherwise. This is the only
-    # number a benefits manager actually cares about — the percentage
-    # is meaningless without a denominator.
+    # Convert percentage-range estimates into real dollar figures using
+    # the user's actual claims. Only attaches when the user has uploaded
+    # real claims — no synthetic denominators.
     _attach_dollar_exposure(analysis)
 
     # Split any audit-rights mega-redline into 5 discrete, copyable redlines
@@ -1534,7 +1594,27 @@ def enrich_contract_analysis(analysis: dict) -> dict:
     if not analysis.get("audit_implication"):
         analysis["audit_implication"] = _audit_implication_for(analysis)
 
-    if not analysis.get("benchmark_observations"):
+    # Benchmark observations: prefer AI-generated contract-specific
+    # observations. Only fall back to the deterministic version (which
+    # uses BENCHMARK_LIBRARY lookup tables) when the AI returned
+    # nothing or too few. The AI now generates benchmark_observations
+    # directly from the contract text with contract-specific
+    # observation/implication/recommendation text and real benchmark
+    # sources — rather than the backend stapling NASHP/NASTAD labels
+    # onto every contract identically.
+    ai_obs = analysis.get("benchmark_observations")
+    if isinstance(ai_obs, list) and len(ai_obs) >= 2:
+        # Validate each observation has the required shape.
+        required_fields = {"kind", "title", "category", "tier", "severity", "observation"}
+        valid_obs = [
+            obs for obs in ai_obs
+            if isinstance(obs, dict) and required_fields.issubset(obs.keys())
+        ]
+        if len(valid_obs) >= 2:
+            analysis["benchmark_observations"] = valid_obs
+        else:
+            analysis["benchmark_observations"] = _derive_benchmark_observations(analysis)
+    else:
         analysis["benchmark_observations"] = _derive_benchmark_observations(analysis)
 
     if not analysis.get("benchmark_recommendations"):
