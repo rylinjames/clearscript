@@ -1071,7 +1071,6 @@ function ContractsPageInner() {
   // 3 and tucked into a sidebar subhead — now rendered as a top-level panel
   // right under the deal-score metric cards so it's the second thing the
   // user sees, regardless of whether they uploaded a plan document.
-  const immediateActions = (rawContractAnalysis?.immediate_actions as string[] | undefined) || [];
   const linkedFindings = ((rawContractAnalysis?.linked_findings as Array<Record<string, string>> | undefined) || []).slice(0, 3);
   const dealDiagnosis = (rawContractAnalysis?.deal_diagnosis as string | undefined) || (rawContractAnalysis?.summary as string | undefined) || null;
   const auditImplication = (rawContractAnalysis?.audit_implication as string | undefined) || null;
@@ -1516,13 +1515,6 @@ function ContractsPageInner() {
             </div>
           </div>
 
-          {/* Action Items panel was previously rendered HERE (right
-              under the metric cards row, before the user has seen any
-              evidence). As a customer, that ordering felt premature —
-              the page told me what to do before showing me why. The
-              panel has been moved below the Recommended Contract
-              Redlines section so it functions as the closing summary
-              after the evidence chain. */}
 
           {controlMap.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
@@ -1878,7 +1870,7 @@ function ContractsPageInner() {
                   <FileText className="w-4 h-4" />
                   Recommended Contract Redlines
                 </h3>
-                <p className="text-xs text-primary-200 mt-0.5">Specific language to propose during renegotiation — each shows estimated dollar recovery and the source authority</p>
+                <p className="text-xs text-primary-200 mt-0.5">Take these to your next PBM negotiation — each has the exact clause to change, the replacement language, the source authority, and the estimated dollar recovery</p>
               </div>
               <div className="divide-y divide-gray-100">
                 {((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, unknown>>).map((redlineRaw, i) => {
@@ -2008,35 +2000,6 @@ function ContractsPageInner() {
                   </div>
                 );
               })()}
-            </div>
-          )}
-
-          {/* Action Items panel — moved here from above the metric cards
-              so it functions as a closing summary AFTER the user has
-              seen the diagnosis, the leakage estimate, the audit story,
-              and the redline language. Reads as "now that you've seen
-              the evidence, here's what to do Monday morning." */}
-          {immediateActions.length > 0 && (
-            <div className="bg-white rounded-xl border-2 border-primary-200 shadow-[var(--shadow-card)] overflow-hidden mb-6">
-              <div className="px-6 py-4 bg-primary-50 border-b border-primary-100 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-700">Next Steps</p>
-                  <h3 className="text-lg font-bold text-gray-900 mt-1">What to do Monday morning</h3>
-                </div>
-                <span className="inline-flex items-center px-3 py-1 rounded-full bg-white border border-primary-200 text-xs font-semibold text-primary-700">
-                  {immediateActions.length} {immediateActions.length === 1 ? "action" : "actions"}
-                </span>
-              </div>
-              <ol className="divide-y divide-gray-100">
-                {immediateActions.map((action, i) => (
-                  <li key={`action-${i}`} className="px-6 py-4 flex gap-4">
-                    <span className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white text-sm font-bold">
-                      {i + 1}
-                    </span>
-                    <p className="text-sm text-gray-800 leading-relaxed pt-0.5">{action}</p>
-                  </li>
-                ))}
-              </ol>
             </div>
           )}
 
