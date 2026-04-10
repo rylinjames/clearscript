@@ -1629,7 +1629,9 @@ function ContractsPageInner() {
                   )}
                   {!customLoaded && (
                     <p className="text-xs text-amber-700 mt-2">
-                      Estimates below are expressed as percentages of plan spend. Upload your claims data to convert these into your specific dollar figures.
+                      Estimates below are expressed as percentages of plan spend.{" "}
+                      <Link href="/claims" className="underline font-semibold hover:text-amber-900">Upload your claims data</Link>
+                      {" "}to convert these into your specific dollar figures.
                     </p>
                   )}
                 </div>
@@ -1663,7 +1665,8 @@ function ContractsPageInner() {
                       ))}
                     </div>
                     <p className="text-xs text-gray-600 mt-2">
-                      Upload your claims data on the Claims page to convert these percentage ranges into specific dollar figures for your plan.
+                      <Link href="/claims" className="underline font-semibold text-primary-600 hover:text-primary-800">Upload your claims data</Link>
+                      {" "}to convert these percentage ranges into specific dollar figures for your plan.
                     </p>
                   </div>
                 )}
