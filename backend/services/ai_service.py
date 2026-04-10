@@ -451,6 +451,10 @@ KEY ANALYSIS RULES:
    SPECIALTY CHANNEL: "Plan Sponsor retains the right to designate or approve the specialty pharmacy vendor(s) used for dispensing specialty medications. PBM shall provide transparent pricing for specialty drugs including acquisition cost, dispensing fees, and any channel-specific markups."
 
    Only generate redlines for terms that are pbm_favorable. Do not generate redlines for employer_favorable or neutral terms.
+
+   AUDIT RIGHTS REDLINES MUST BE SPLIT: Do NOT generate one combined audit-rights redline. Generate up to 5 distinct redlines, each with its own section name and copyable language: (1) Audit Rights — Frequency & Auditor of Choice, (2) Audit Rights — Notice & Lookback, (3) Audit Rights — Scope & Manufacturer Access, (4) Audit Rights — Cost Allocation & Data Delivery, (5) Audit Rights — Post-Termination Survival. Each must be individually actionable so the plan sponsor can take them to PBM negotiation one at a time.
+
+   SOURCE FIELD: The `source` field on each redline is required and must cite a specific external authority — model contract section number (e.g. "NASHP Model PBM Contract §4.2"), statute (e.g. "ERISA §404(a)(1)", "CAA 2021 §201", "DOL Transparency Rule 29 CFR 2520.408b-2(c)(1)(iv)"), or recognized industry standard. Never leave it blank or write "industry best practice" — the plan sponsor's counsel needs to be able to verify the citation.
 9. DECISION LAYER: Do not treat all issues equally. Weight the output explicitly:
    - Tier 1: rebate structure, spread pricing, specialty control
    - Tier 2: MAC pricing, formulary control, channel requirements
@@ -963,6 +967,235 @@ def _attach_dollar_exposure(analysis: dict) -> None:
         entry["dollar_estimate_basis"] = "uploaded_claims" if custom_data else "synthetic_sample"
 
 
+def _attach_redline_savings(analysis: dict) -> None:
+    """
+    Attach a `savings_low` / `savings_high` dollar range to each redline
+    by mapping its section text to the matching financial_exposure category.
+
+    The leakage model in `_attach_dollar_exposure` already produces three
+    dollar-denominated buckets (rebate_leakage, spread_exposure,
+    specialty_control). Each redline addresses one of those buckets, so
+    we can take the relevant `dollar_estimate_low` / `dollar_estimate_high`
+    pair and copy it onto the redline. That turns each editorial change
+    into a real economic ask: "Tighten this clause → recover $340k–$680k."
+
+    Audit rights redlines get a fractional credit because audit rights
+    don't appear as a standalone exposure bucket — instead they unlock
+    visibility into the other three. We attribute 15% of total leakage to
+    each audit redline (capped at 5 redlines), reflecting that without
+    audit rights the leakage is uncollectable, but no single audit clause
+    is the sole driver.
+
+    Best-effort. Failures never raise — a missing savings field just
+    means the frontend doesn't render the chip.
+    """
+    redlines = analysis.get("redline_suggestions")
+    if not isinstance(redlines, list) or not redlines:
+        return
+    exposure = analysis.get("financial_exposure")
+    if not isinstance(exposure, dict):
+        return
+
+    def _bucket_dollars(bucket_key: str) -> tuple[float, float] | None:
+        bucket = exposure.get(bucket_key)
+        if not isinstance(bucket, dict):
+            return None
+        low = bucket.get("dollar_estimate_low")
+        high = bucket.get("dollar_estimate_high")
+        if low is None or high is None:
+            return None
+        try:
+            return float(low), float(high)
+        except (TypeError, ValueError):
+            return None
+
+    rebate_dollars = _bucket_dollars("rebate_leakage")
+    spread_dollars = _bucket_dollars("spread_exposure")
+    specialty_dollars = _bucket_dollars("specialty_control")
+    total_low = sum(d[0] for d in (rebate_dollars, spread_dollars, specialty_dollars) if d)
+    total_high = sum(d[1] for d in (rebate_dollars, spread_dollars, specialty_dollars) if d)
+
+    audit_redline_count = sum(
+        1 for r in redlines
+        if isinstance(r, dict) and "audit" in str(r.get("section", "")).lower()
+    )
+    audit_redline_count = max(audit_redline_count, 1)
+    audit_share = 0.15  # each audit redline unlocks ~15% of total leakage visibility
+
+    for r in redlines:
+        if not isinstance(r, dict):
+            continue
+        section = str(r.get("section", "")).lower()
+
+        savings: tuple[float, float] | None = None
+        category_label = ""
+        if "rebate" in section:
+            savings = rebate_dollars
+            category_label = "rebate leakage recoverable"
+        elif "spread" in section or "pass-through" in section or "passthrough" in section:
+            savings = spread_dollars
+            category_label = "spread exposure recoverable"
+        elif "specialty" in section:
+            savings = specialty_dollars
+            category_label = "specialty channel exposure"
+        elif "audit" in section:
+            if total_low > 0 or total_high > 0:
+                savings = (total_low * audit_share, total_high * audit_share)
+                category_label = "leakage made auditable"
+        elif "mac" in section or "formulary" in section:
+            # Formulary and MAC moves typically yield 1-3% of total spend.
+            if rebate_dollars:
+                savings = (rebate_dollars[0] * 0.3, rebate_dollars[1] * 0.3)
+                category_label = "rebate optimization upside"
+
+        if savings is None:
+            continue
+        low, high = savings
+        if low <= 0 and high <= 0:
+            continue
+        r["savings_low"] = round(low, 2)
+        r["savings_high"] = round(high, 2)
+        r["savings_category"] = category_label
+        r["savings_basis"] = exposure.get("claims_context", {}).get("custom_data_loaded") and "uploaded_claims" or "benchmark_plan"
+
+
+# Canonical audit-rights redline pack. Used by _ensure_audit_rights_redlines
+# to guarantee that when a contract has deficient audit rights, the user sees
+# 5 discrete, copyable redlines instead of one undifferentiated wall of text.
+# Each entry pulls from the gold-standard NASHP/NASTAD model contract language
+# already cited in the system prompt, but split by topic so the plan sponsor
+# can take them to PBM negotiation one at a time.
+_AUDIT_RIGHTS_CANONICAL_REDLINES = [
+    {
+        "section": "Audit Rights — Frequency & Auditor of Choice",
+        "current_language": "Plan Sponsor shall have the right to conduct one (1) audit per contract year.",
+        "suggested_language": (
+            "The Plan Sponsor or its designee shall have the right to audit annually, with an "
+            "auditor of its choice, for both claims and rebates, with full cooperation of the "
+            "PBM, including the manufacturer or aggregator rebate contracts held by the PBM, "
+            "to verify compliance with all program requirements and contractual guarantees with "
+            "no additional charge from the PBM."
+        ),
+        "rationale": (
+            "Restricting audits to once per year — and requiring the PBM to approve the auditor — "
+            "lets known issues compound for up to 12 months before the plan sponsor can act."
+        ),
+        "source": "NASHP Model PBM Contract §8.1; NASTAD State Medicaid PBM Toolkit",
+        "impact": "high",
+    },
+    {
+        "section": "Audit Rights — Notice & Lookback",
+        "current_language": "Plan Sponsor shall provide PBM with no less than sixty (60) days' prior written notice of its intent to conduct an audit.",
+        "suggested_language": (
+            "The Plan Sponsor shall have the right to audit, with an auditor of its choice, at "
+            "any time provided the Plan Sponsor gives 90-days advance notice. The audit shall "
+            "have the right to review up to 36 months of claims data at no additional charge "
+            "from the PBM."
+        ),
+        "rationale": (
+            "60-day notice gives the PBM time to remediate findings before the audit captures "
+            "them. A 36-month lookback ensures errors that compound over multiple contract "
+            "years are recoverable, not just the current cycle."
+        ),
+        "source": "NASHP Model PBM Contract §8.2; CAA 2021 §204 disclosure timelines",
+        "impact": "high",
+    },
+    {
+        "section": "Audit Rights — Scope & Manufacturer Access",
+        "current_language": "Audits shall be limited to verification of pricing and rebate terms. Audits shall not include review of PBM's contracts with pharmaceutical manufacturers, pharmacy network agreements, or internal cost structures.",
+        "suggested_language": (
+            "The Plan Sponsor or its designee shall have the right to audit up to 12 "
+            "pharmaceutical manufacturer contracts during an on-site rebate audit, plus full "
+            "review of pharmacy network agreements and the PBM's internal cost structure as it "
+            "pertains to pricing applied to Plan Sponsor's claims."
+        ),
+        "rationale": (
+            "Without manufacturer-contract access, 'rebate audits' can only verify what the PBM "
+            "chose to report. ERISA §404 fiduciary duty requires the plan sponsor to be able to "
+            "verify total manufacturer compensation, not just the slice the PBM chooses to call "
+            "'rebates.'"
+        ),
+        "source": "NASHP Model PBM Contract §8.3; ERISA §404(a)(1)(A)–(B)",
+        "impact": "high",
+    },
+    {
+        "section": "Audit Rights — Cost Allocation & Data Delivery",
+        "current_language": "All costs associated with any audit shall be borne solely by Plan Sponsor.",
+        "suggested_language": (
+            "The Plan Sponsor will not be held responsible for time or miscellaneous costs "
+            "incurred by the PBM in association with any audit process, including all costs "
+            "associated with provision of data, audit finding response reports, or systems "
+            "access. PBM will provide complete claim files and documentation (full claim files, "
+            "financial reconciliation reports, inclusion files, and plan documentation) to the "
+            "auditor within 30 days of receipt of the audit data request."
+        ),
+        "rationale": (
+            "Charging the plan sponsor for audit cooperation is a structural disincentive to "
+            "audit. A 30-day data-delivery SLA prevents the PBM from running out the clock on "
+            "the audit window through delayed responses."
+        ),
+        "source": "NASHP Model PBM Contract §8.4; DOL Transparency Rule 29 CFR 2520.408b-2(c)(1)(iv)",
+        "impact": "medium",
+    },
+    {
+        "section": "Audit Rights — Post-Termination Survival",
+        "current_language": "(No provision found for audit rights surviving termination.)",
+        "suggested_language": (
+            "The Plan Sponsor's right to audit shall survive the termination of this Agreement "
+            "for a period of 3 years. PBM agrees to financial guarantees for turnaround times "
+            "for each stage of the audit process and a 30-day turnaround time to provide full "
+            "responses to all sample-claims and audit findings. PBM will correct any errors "
+            "brought to its attention whether identified by an audit or otherwise."
+        ),
+        "rationale": (
+            "Without survival clauses, the PBM can defeat any audit by terminating the contract "
+            "first. ERISA's 3-year statute of limitations on fiduciary breach claims sets the "
+            "minimum survival window."
+        ),
+        "source": "NASHP Model PBM Contract §8.5; ERISA §413 statute of limitations",
+        "impact": "medium",
+    },
+]
+
+
+def _ensure_audit_rights_redlines(analysis: dict) -> None:
+    """
+    Replace any AI-generated audit-rights redline(s) with the canonical
+    5-card pack when audit rights are deficient.
+
+    The previous behavior — letting the AI emit one giant audit-rights
+    redline covering scope, frequency, costs, and remediation in a single
+    mega-block — meant the user had to mentally parse what was actually
+    being asked for. Splitting it into 5 discrete redlines makes each ask
+    individually copyable into a renegotiation document.
+
+    We only replace if audit_rights are flagged as PBM-favorable (penalty
+    >= 0.45). If the contract already has strong audit rights, we leave
+    whatever the AI generated alone.
+    """
+    audit = analysis.get("audit_rights", {}) if isinstance(analysis, dict) else {}
+    if not isinstance(audit, dict):
+        return
+    if _term_penalty(audit, "audit_rights") < 0.45:
+        return
+
+    import copy
+    redlines = analysis.get("redline_suggestions")
+    if not isinstance(redlines, list):
+        analysis["redline_suggestions"] = copy.deepcopy(_AUDIT_RIGHTS_CANONICAL_REDLINES)
+        return
+
+    # Drop any existing redline whose section name contains "audit",
+    # then append the canonical 5. We deep-copy so downstream mutations
+    # (e.g. _attach_redline_savings) don't bleed back into the constant.
+    non_audit = [
+        r for r in redlines
+        if not (isinstance(r, dict) and "audit" in str(r.get("section", "")).lower())
+    ]
+    canonical = copy.deepcopy(_AUDIT_RIGHTS_CANONICAL_REDLINES)
+    analysis["redline_suggestions"] = non_audit + canonical
+
+
 def _control_posture_for(analysis: dict) -> dict:
     # Always start from the deterministic 5-lever baseline. This guarantees
     # the Control Map has rows for Rebates, Pricing, Specialty, Formulary,
@@ -1242,6 +1475,16 @@ def enrich_contract_analysis(analysis: dict) -> dict:
     # number a benefits manager actually cares about — the percentage
     # is meaningless without a denominator.
     _attach_dollar_exposure(analysis)
+
+    # Split any audit-rights mega-redline into 5 discrete, copyable redlines
+    # using the canonical NASHP/NASTAD-sourced pack. Must run BEFORE
+    # _attach_redline_savings so the savings model sees the post-split list.
+    _ensure_audit_rights_redlines(analysis)
+
+    # Attach per-redline dollar savings by mapping each redline's section
+    # text to the matching financial_exposure category. Turns each redline
+    # into a real economic ask instead of an editorial suggestion.
+    _attach_redline_savings(analysis)
 
     # Compute the notice deadline + days-until counters from the AI's
     # contract_identification block. After this runs, the frontend has

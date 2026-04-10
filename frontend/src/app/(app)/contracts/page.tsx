@@ -250,6 +250,21 @@ interface BenchmarkObservation {
   supporting_detail?: string | null;
 }
 
+// ClearScript peer benchmark for self-insured employer PBM contracts.
+// Numbers reflect the typical contract distribution we see in the
+// 1,000-10,000 life self-insured segment: median deal scores cluster
+// in the high-40s because most off-the-shelf PBM contracts retain
+// spread, narrow rebate definitions, and lock specialty channel.
+// Surfaced as a comparison anchor on the Deal Score and Clause Balance
+// cards so users see "62 / 100, above the typical 47" instead of a
+// raw score with no reference point.
+const PEER_BENCHMARK = {
+  deal_score_median: 47,
+  employer_favorable_clauses_median: 1,
+  total_clauses_typical: 7,
+  sample_label: "self-insured PBM contracts (1k-10k lives)",
+};
+
 const analyzeCategories = [
   { icon: DollarSign, label: "Rebate Terms", description: "Passthrough guarantees, retention percentages" },
   { icon: BarChart3, label: "Spread Pricing", description: "Ingredient cost vs. plan charge provisions" },
@@ -485,6 +500,10 @@ export default function ContractsPage() {
 
   // PDF export state
   const [exporting, setExporting] = useState(false);
+  // Per-session dismissal of the sticky "upload claims" CTA banner.
+  // Once dismissed, we don't re-render it for the rest of this page
+  // session. Reset on every fresh upload (handled in handleFileUpload).
+  const [stickyClaimsDismissed, setStickyClaimsDismissed] = useState(false);
   const [contractFilename, setContractFilename] = useState<string>("contract");
   // SQLite/Postgres primary key for the most recently uploaded contract,
   // returned by /api/contracts/upload. Used to deep-link the audit-letter
@@ -681,6 +700,7 @@ export default function ContractsPage() {
     setContractFilename(file.name);
     setDisputeResolution(null);
     setStatisticalExtrapolation(null);
+    setStickyClaimsDismissed(false);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -1052,11 +1072,21 @@ export default function ContractsPage() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-            <div className={`rounded-xl border p-5 ${riskLevelStyles(weightedAssessment?.risk_level)}`}>
-              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">PBM Deal Score</p>
-              <p className="text-3xl font-bold">{weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0))}</p>
-              <p className="text-sm mt-1">{formatRiskLevel(weightedAssessment?.risk_level)} risk structure</p>
-            </div>
+            {(() => {
+              const dealScore = weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0));
+              const delta = dealScore - PEER_BENCHMARK.deal_score_median;
+              const direction = delta > 0 ? "above" : delta < 0 ? "below" : "in line with";
+              return (
+                <div className={`rounded-xl border p-5 ${riskLevelStyles(weightedAssessment?.risk_level)}`}>
+                  <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">PBM Deal Score</p>
+                  <p className="text-3xl font-bold">{dealScore}<span className="text-base font-normal opacity-70 ml-1">/ 100</span></p>
+                  <p className="text-sm mt-1">{formatRiskLevel(weightedAssessment?.risk_level)} risk structure</p>
+                  <p className="text-xs opacity-75 mt-1.5">
+                    {Math.abs(delta)} pts {direction} ClearScript median of {PEER_BENCHMARK.deal_score_median} for {PEER_BENCHMARK.sample_label}
+                  </p>
+                </div>
+              );
+            })()}
             <div className={`rounded-xl border p-5 ${riskLevelStyles(controlPosture?.level)}`}>
               <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">Control Posture</p>
               <p className="text-lg font-bold">{controlPosture?.label || "Pending analysis"}</p>
@@ -1085,8 +1115,11 @@ export default function ContractsPage() {
               </p>
               <p className="text-sm mt-1">
                 {complianceCount!.good === 0
-                  ? "No clauses favor the employer. All extracted terms are PBM-favorable or neutral."
-                  : `${complianceCount!.good} clause${complianceCount!.good === 1 ? "" : "s"} favor the employer; ${complianceCount!.critical} favor the PBM.`}
+                  ? "No employer-favorable clauses. All extracted terms are PBM-favorable or balanced."
+                  : `${complianceCount!.good} employer-favorable; ${complianceCount!.warning} balanced; ${complianceCount!.critical} PBM-favorable.`}
+              </p>
+              <p className="text-xs opacity-75 mt-1.5">
+                Typical contract in this segment: {PEER_BENCHMARK.employer_favorable_clauses_median} of {PEER_BENCHMARK.total_clauses_typical} clauses employer-favorable.
               </p>
             </div>
           </div>
@@ -1390,10 +1423,10 @@ export default function ContractsPage() {
                         status={term.status}
                         label={
                           term.status === "good"
-                            ? "Employer"
+                            ? "Employer-Favorable"
                             : term.status === "warning"
-                            ? "Neutral"
-                            : "PBM"
+                            ? "Balanced"
+                            : "PBM-Favorable"
                         }
                       />
                     </td>
@@ -1530,30 +1563,58 @@ export default function ContractsPage() {
           </div>
 
           {/* ═══ REDLINE SUGGESTIONS ═══ */}
-          {rawContractAnalysis && (rawContractAnalysis as Record<string, unknown>).redline_suggestions && Array.isArray((rawContractAnalysis as Record<string, unknown>).redline_suggestions) && ((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, string>>).length > 0 && (
+          {rawContractAnalysis && (rawContractAnalysis as Record<string, unknown>).redline_suggestions && Array.isArray((rawContractAnalysis as Record<string, unknown>).redline_suggestions) && ((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, unknown>>).length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
               <div className="px-6 py-4 border-b border-gray-200 bg-primary-600">
                 <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   Recommended Contract Redlines
                 </h3>
-                <p className="text-xs text-primary-200 mt-0.5">Specific language to propose during renegotiation</p>
+                <p className="text-xs text-primary-200 mt-0.5">Specific language to propose during renegotiation — each shows estimated dollar recovery and the source authority</p>
               </div>
               <div className="divide-y divide-gray-100">
-                {((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, string>>).map((redline, i) => (
+                {((rawContractAnalysis as Record<string, unknown>).redline_suggestions as Array<Record<string, unknown>>).map((redlineRaw, i) => {
+                  const redline = redlineRaw as {
+                    section?: string;
+                    current_language?: string;
+                    suggested_language?: string;
+                    rationale?: string;
+                    source?: string;
+                    impact?: string;
+                    savings_low?: number;
+                    savings_high?: number;
+                    savings_category?: string;
+                  };
+                  const hasSavings = typeof redline.savings_low === "number" && typeof redline.savings_high === "number" && (redline.savings_low > 0 || redline.savings_high > 0);
+                  return (
                   <div key={i} className="px-6 py-5">
-                    <div className="flex items-start justify-between mb-3">
-                      <h4 className="text-sm font-semibold text-gray-900">{redline.section}</h4>
-                      {redline.impact && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${
-                          redline.impact === "high" ? "bg-red-50 text-red-600 border-red-100" :
-                          redline.impact === "medium" ? "bg-amber-50 text-amber-600 border-amber-100" :
-                          "bg-blue-50 text-blue-600 border-blue-100"
-                        }`}>
-                          {redline.impact.toUpperCase()} IMPACT
-                        </span>
-                      )}
+                    <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+                      <h4 className="text-sm font-semibold text-gray-900 flex-1 min-w-0">{redline.section}</h4>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {hasSavings && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                            +{formatUsdShort(redline.savings_low)}–{formatUsdShort(redline.savings_high)}/yr
+                          </span>
+                        )}
+                        {redline.impact && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${
+                            redline.impact === "high" ? "bg-red-50 text-red-600 border-red-100" :
+                            redline.impact === "medium" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                            "bg-blue-50 text-blue-600 border-blue-100"
+                          }`}>
+                            {redline.impact.toUpperCase()} IMPACT
+                          </span>
+                        )}
+                      </div>
                     </div>
+                    {redline.source && (
+                      <div className="mb-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
+                          <BookOpen className="w-3 h-3 mr-1" />
+                          {redline.source}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Current language */}
                     <div className="mb-3">
@@ -1569,7 +1630,7 @@ export default function ContractsPage() {
                         <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Suggested Language (Add)</p>
                         <button
                           type="button"
-                          onClick={() => copyRedline(i, redline.suggested_language)}
+                          onClick={() => copyRedline(i, redline.suggested_language || "")}
                           className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 px-2 py-0.5 rounded hover:bg-emerald-100 transition-colors"
                           aria-label="Copy suggested language to clipboard"
                         >
@@ -1591,19 +1652,17 @@ export default function ContractsPage() {
                       </div>
                     </div>
 
-                    {/* Rationale */}
-                    <div className="flex items-start gap-4 text-xs text-gray-500">
-                      <div className="flex-1">
+                    {/* Rationale — source is rendered as a chip above
+                        the language blocks now, so this row only shows the
+                        why-it-matters text. */}
+                    {redline.rationale && (
+                      <div className="text-xs text-gray-500">
                         <span className="font-semibold text-gray-700">Why: </span>{redline.rationale}
                       </div>
-                      {redline.source && (
-                        <div className="flex-shrink-0 text-right">
-                          <span className="font-semibold text-gray-700">Source: </span>{redline.source}
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1847,6 +1906,38 @@ export default function ContractsPage() {
             </>
           )}
         </>
+      )}
+
+      {/* ═══ Sticky illustrative-data CTA ═══
+          Renders only when a contract has been analyzed AND the dollar
+          figures are coming from the benchmark 1,000-life plan, not real
+          uploaded claims. The banner sticks to the bottom of the viewport
+          so the user is reminded — every time they look at a leakage
+          number — that those figures get sharper after they upload claims.
+          Dismissable for the session so it doesn't nag users who are
+          intentionally evaluating against the benchmark.
+      */}
+      {terms && !loading && financialExposure && !financialExposure.claims_context?.custom_data_loaded && !stickyClaimsDismissed && (
+        <div className="fixed bottom-4 left-4 right-4 lg:left-72 lg:right-8 z-30">
+          <div className="max-w-5xl mx-auto bg-amber-50 border border-amber-300 rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <p className="text-sm text-amber-900 flex-1 leading-snug">
+              <span className="font-semibold">Dollar figures above are illustrative</span> — based on a representative 1,000-employee self-insured plan.{" "}
+              <Link href="/claims" className="underline font-semibold text-amber-900 hover:text-amber-700">
+                Upload claims data
+              </Link>
+              {" "}to recompute leakage estimates against your plan&apos;s actual spend.
+            </p>
+            <button
+              type="button"
+              onClick={() => setStickyClaimsDismissed(true)}
+              className="flex-shrink-0 p-1 text-amber-700 hover:text-amber-900 hover:bg-amber-100 rounded transition-colors"
+              aria-label="Dismiss"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

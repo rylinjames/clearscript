@@ -9,7 +9,13 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from services.ai_service import _extract_first_json_object, _attach_critical_dates
+from services.ai_service import (
+    _extract_first_json_object,
+    _attach_critical_dates,
+    _attach_redline_savings,
+    _ensure_audit_rights_redlines,
+    _AUDIT_RIGHTS_CANONICAL_REDLINES,
+)
 
 
 def test_extract_clean_json_object():
@@ -202,3 +208,166 @@ def test_critical_dates_passed_deadline_negative_days():
     # Notice deadline = today + 30 - 180 = today - 150 days
     assert cid["days_until_notice_deadline"] == 30 - 180  # negative
     assert cid["days_until_notice_deadline"] < 0
+
+
+# ─── _attach_redline_savings ────────────────────────────────────────────────
+
+
+def _make_exposure_with_dollars():
+    return {
+        "rebate_leakage": {
+            "level": "high",
+            "estimate": "3-6% of brand spend",
+            "dollar_estimate_low": 63000.0,
+            "dollar_estimate_high": 126000.0,
+        },
+        "spread_exposure": {
+            "level": "high",
+            "estimate": "1-3% of total claims spend",
+            "dollar_estimate_low": 25000.0,
+            "dollar_estimate_high": 75000.0,
+        },
+        "specialty_control": {
+            "level": "high",
+            "estimate": "30-50% of total Rx spend",
+            "dollar_estimate_low": 750000.0,
+            "dollar_estimate_high": 1250000.0,
+        },
+        "claims_context": {"custom_data_loaded": False},
+    }
+
+
+def test_redline_savings_maps_rebate_section():
+    analysis = {
+        "redline_suggestions": [
+            {"section": "Section 4.4 — Rebate Definition", "current_language": "x", "suggested_language": "y"}
+        ],
+        "financial_exposure": _make_exposure_with_dollars(),
+    }
+    _attach_redline_savings(analysis)
+    r = analysis["redline_suggestions"][0]
+    assert r["savings_low"] == 63000.0
+    assert r["savings_high"] == 126000.0
+    assert "rebate" in r["savings_category"]
+
+
+def test_redline_savings_maps_spread_section():
+    analysis = {
+        "redline_suggestions": [
+            {"section": "Section 3.4 — Spread Pricing"}
+        ],
+        "financial_exposure": _make_exposure_with_dollars(),
+    }
+    _attach_redline_savings(analysis)
+    r = analysis["redline_suggestions"][0]
+    assert r["savings_low"] == 25000.0
+    assert r["savings_high"] == 75000.0
+
+
+def test_redline_savings_maps_specialty_section():
+    analysis = {
+        "redline_suggestions": [
+            {"section": "Specialty Channel Optionality"}
+        ],
+        "financial_exposure": _make_exposure_with_dollars(),
+    }
+    _attach_redline_savings(analysis)
+    r = analysis["redline_suggestions"][0]
+    assert r["savings_low"] == 750000.0
+    assert r["savings_high"] == 1250000.0
+
+
+def test_redline_savings_audit_uses_fractional_total():
+    """Audit redlines get a 15% share of total leakage as 'visibility unlock' value."""
+    analysis = {
+        "redline_suggestions": [
+            {"section": "Audit Rights — Manufacturer Access"}
+        ],
+        "financial_exposure": _make_exposure_with_dollars(),
+    }
+    _attach_redline_savings(analysis)
+    r = analysis["redline_suggestions"][0]
+    total_low = 63000.0 + 25000.0 + 750000.0
+    total_high = 126000.0 + 75000.0 + 1250000.0
+    assert r["savings_low"] == round(total_low * 0.15, 2)
+    assert r["savings_high"] == round(total_high * 0.15, 2)
+
+
+def test_redline_savings_handles_missing_exposure_gracefully():
+    """No financial_exposure → no-op, no exception."""
+    analysis = {
+        "redline_suggestions": [{"section": "Section 4.4 — Rebate"}],
+    }
+    _attach_redline_savings(analysis)
+    assert "savings_low" not in analysis["redline_suggestions"][0]
+
+
+def test_redline_savings_skips_unmatched_sections():
+    """A redline whose section doesn't match any bucket → no savings attached."""
+    analysis = {
+        "redline_suggestions": [{"section": "Governing Law"}],
+        "financial_exposure": _make_exposure_with_dollars(),
+    }
+    _attach_redline_savings(analysis)
+    assert "savings_low" not in analysis["redline_suggestions"][0]
+
+
+# ─── _ensure_audit_rights_redlines ──────────────────────────────────────────
+
+
+def test_audit_rights_split_replaces_single_mega_redline():
+    """A deficient audit_rights block + one combined audit redline → 5 canonical redlines."""
+    analysis = {
+        "audit_rights": {"found": True, "details": "limited", "favorability": "pbm_favorable"},
+        "redline_suggestions": [
+            {"section": "Section 6 — Audit Rights", "current_language": "wall of text", "suggested_language": "wall of text"},
+            {"section": "Section 4.4 — Rebate Definition", "current_language": "x", "suggested_language": "y"},
+        ],
+    }
+    _ensure_audit_rights_redlines(analysis)
+    audit_redlines = [r for r in analysis["redline_suggestions"] if "audit" in r["section"].lower()]
+    assert len(audit_redlines) == len(_AUDIT_RIGHTS_CANONICAL_REDLINES)
+    # Original non-audit redline preserved
+    assert any("Rebate Definition" in r["section"] for r in analysis["redline_suggestions"])
+    # Each canonical redline has the required fields
+    for r in audit_redlines:
+        assert r.get("section")
+        assert r.get("suggested_language")
+        assert r.get("source")
+        assert r.get("rationale")
+
+
+def test_audit_rights_split_skips_when_audit_rights_strong():
+    """Strong audit rights → no replacement, leave AI's output alone."""
+    analysis = {
+        "audit_rights": {"found": True, "favorability": "employer_favorable", "details": "broad scope, manufacturer access, post-termination survival"},
+        "redline_suggestions": [
+            {"section": "Section 4.4 — Rebate Definition"}
+        ],
+    }
+    _ensure_audit_rights_redlines(analysis)
+    assert len(analysis["redline_suggestions"]) == 1
+    assert analysis["redline_suggestions"][0]["section"] == "Section 4.4 — Rebate Definition"
+
+
+def test_audit_rights_split_handles_no_redlines():
+    """Deficient audit + no existing redlines → seed with the canonical pack."""
+    analysis = {
+        "audit_rights": {"found": True, "favorability": "pbm_favorable", "details": "limited scope, no manufacturer access"},
+    }
+    _ensure_audit_rights_redlines(analysis)
+    assert "redline_suggestions" in analysis
+    assert len(analysis["redline_suggestions"]) == len(_AUDIT_RIGHTS_CANONICAL_REDLINES)
+
+
+def test_audit_rights_split_does_not_mutate_canonical_constant():
+    """The module-level _AUDIT_RIGHTS_CANONICAL_REDLINES must not be mutated by callers."""
+    original_first_section = _AUDIT_RIGHTS_CANONICAL_REDLINES[0]["section"]
+    analysis = {
+        "audit_rights": {"found": True, "favorability": "pbm_favorable", "details": "limited"},
+    }
+    _ensure_audit_rights_redlines(analysis)
+    # Mutate the copy attached to the analysis
+    analysis["redline_suggestions"][0]["section"] = "MUTATED"
+    # Constant must be untouched
+    assert _AUDIT_RIGHTS_CANONICAL_REDLINES[0]["section"] == original_first_section
