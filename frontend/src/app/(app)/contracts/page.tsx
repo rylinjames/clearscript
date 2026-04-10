@@ -1101,55 +1101,77 @@ export default function ContractsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-            {(() => {
-              const dealScore = weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0));
-              const delta = dealScore - PEER_BENCHMARK.deal_score_median;
-              const direction = delta > 0 ? "above" : delta < 0 ? "below" : "in line with";
-              return (
-                <div className={`rounded-xl border p-5 ${riskLevelStyles(weightedAssessment?.risk_level)}`}>
-                  <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">PBM Deal Score</p>
-                  <p className="text-3xl font-bold">{dealScore}<span className="text-base font-normal opacity-70 ml-1">/ 100</span></p>
-                  <p className="text-sm mt-1">{formatRiskLevel(weightedAssessment?.risk_level)} risk structure</p>
-                  <p className="text-xs opacity-75 mt-1.5">
-                    {Math.abs(delta)} pts {direction} ClearScript median of {PEER_BENCHMARK.deal_score_median} for {PEER_BENCHMARK.sample_label}
-                  </p>
+          {/* ═══ Score collapse: Deal Score hero + supporting indicators strip ═══
+              Customer critique flagged five competing "scores" all saying
+              "this contract is bad" in slightly different vocabulary. We
+              keep all the information but rebuild the hierarchy: Deal
+              Score becomes a single full-width hero card with the giant
+              number, peer anchor, and risk structure. Control Posture,
+              Structural Risk, and Clause Balance demote to a smaller
+              3-up "Supporting Indicators" strip with smaller numbers and
+              tighter copy. Customer now sees ONE number first, with
+              everything else as supporting evidence.
+          */}
+          {(() => {
+            const dealScore = weightedAssessment?.deal_score ?? Math.max(0, 100 - (rawContractAnalysis?.overall_risk_score as number || 0));
+            const delta = dealScore - PEER_BENCHMARK.deal_score_median;
+            const direction = delta > 0 ? "above" : delta < 0 ? "below" : "in line with";
+            return (
+              <div className={`rounded-xl border-2 p-6 mb-4 ${riskLevelStyles(weightedAssessment?.risk_level)}`}>
+                <div className="flex items-start gap-6 flex-wrap">
+                  <div className="flex-shrink-0">
+                    <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">PBM Deal Score</p>
+                    <p className="text-6xl font-bold leading-none">
+                      {dealScore}
+                      <span className="text-2xl font-normal opacity-60 ml-1">/ 100</span>
+                    </p>
+                  </div>
+                  <div className="flex-1 min-w-0 pt-1">
+                    <p className="text-base font-semibold">{formatRiskLevel(weightedAssessment?.risk_level)} risk structure</p>
+                    <p className="text-sm opacity-90 mt-1 leading-relaxed">
+                      {Math.abs(delta)} pts {direction} the ClearScript median of {PEER_BENCHMARK.deal_score_median} for {PEER_BENCHMARK.sample_label}.
+                      {delta < -10 && " This contract sits in the bottom quartile of self-insured PBM deals we benchmark."}
+                      {delta > 10 && " This contract sits in the top quartile of self-insured PBM deals we benchmark."}
+                    </p>
+                  </div>
                 </div>
-              );
-            })()}
-            <div className={`rounded-xl border p-5 ${riskLevelStyles(controlPosture?.level)}`}>
-              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">Control Posture</p>
-              <p className="text-lg font-bold">{controlPosture?.label || "Pending analysis"}</p>
-              <p className="text-sm mt-1">{controlPosture?.summary || "Lead with who controls pricing, rebates, specialty, and audit rights."}</p>
+              </div>
+            );
+          })()}
+
+          {/* Supporting indicators strip — three smaller cards beneath
+              the hero. Each provides a different lens on the same "bad
+              contract" finding (control, structural override, clause
+              mix), but none competes with the headline Deal Score. */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <div className={`rounded-lg border p-3 ${riskLevelStyles(controlPosture?.level)}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider opacity-80 mb-1">Control Posture</p>
+              <p className="text-sm font-bold leading-tight">{controlPosture?.label || "Pending analysis"}</p>
+              <p className="text-[11px] mt-1 leading-snug opacity-90 line-clamp-2">{controlPosture?.summary || "Who controls pricing, rebates, specialty, and audit rights."}</p>
             </div>
-            <div className={`rounded-xl border p-5 ${riskLevelStyles(structuralRiskOverride?.triggered ? structuralRiskOverride?.level : "low")}`}>
-              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">Structural Risk</p>
-              <p className="text-lg font-bold">
+            <div className={`rounded-lg border p-3 ${riskLevelStyles(structuralRiskOverride?.triggered ? structuralRiskOverride?.level : "low")}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider opacity-80 mb-1">Structural Risk</p>
+              <p className="text-sm font-bold leading-tight">
                 {structuralRiskOverride?.triggered ? "Override triggered" : "Weighted only"}
               </p>
-              <p className="text-sm mt-1">
+              <p className="text-[11px] mt-1 leading-snug opacity-90 line-clamp-2">
                 {structuralRiskOverride?.rationale || "No structural override was required."}
               </p>
             </div>
-            <div className={`rounded-xl border p-5 ${
+            <div className={`rounded-lg border p-3 ${
               complianceCount!.good === 0 && complianceCount!.critical > 0
                 ? "bg-red-50 border-red-200 text-red-700"
                 : complianceCount!.good > complianceCount!.critical
                 ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                 : "bg-amber-50 border-amber-200 text-amber-700"
             }`}>
-              <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-2">Clause Balance</p>
-              <p className="text-3xl font-bold">
-                {complianceCount!.good}
-                <span className="text-base font-normal opacity-70 ml-1">of {complianceCount!.good + complianceCount!.warning + complianceCount!.critical}</span>
+              <p className="text-[10px] font-semibold uppercase tracking-wider opacity-80 mb-1">Clause Balance</p>
+              <p className="text-sm font-bold leading-tight">
+                {complianceCount!.good} of {complianceCount!.good + complianceCount!.warning + complianceCount!.critical} employer-favorable
               </p>
-              <p className="text-sm mt-1">
-                {complianceCount!.good === 0
-                  ? "No employer-favorable clauses. All extracted terms are PBM-favorable or balanced."
-                  : `${complianceCount!.good} employer-favorable; ${complianceCount!.warning} balanced; ${complianceCount!.critical} PBM-favorable.`}
-              </p>
-              <p className="text-xs opacity-75 mt-1.5">
-                Typical contract in this segment: {PEER_BENCHMARK.employer_favorable_clauses_median} of {PEER_BENCHMARK.total_clauses_typical} clauses employer-favorable.
+              <p className="text-[11px] mt-1 leading-snug opacity-90 line-clamp-2">
+                Typical: {PEER_BENCHMARK.employer_favorable_clauses_median} of {PEER_BENCHMARK.total_clauses_typical}.
+                {" "}{complianceCount!.warning} balanced; {complianceCount!.critical} PBM-favorable.
               </p>
             </div>
           </div>

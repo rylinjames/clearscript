@@ -29,14 +29,62 @@ logger = logging.getLogger(__name__)
 NAVY = colors.HexColor("#1e3a5f")
 NAVY_LIGHT = colors.HexColor("#2a5f8f")
 EMERALD = colors.HexColor("#10b981")
+EMERALD_BG = colors.HexColor("#ecfdf5")
+EMERALD_DARK = colors.HexColor("#065f46")
+BLUE = colors.HexColor("#1d4ed8")
+BLUE_BG = colors.HexColor("#eff6ff")
 RED = colors.HexColor("#dc2626")
+RED_BG = colors.HexColor("#fef2f2")
 AMBER = colors.HexColor("#d97706")
+AMBER_BG = colors.HexColor("#fffbeb")
 GRAY_50 = colors.HexColor("#fafafa")
 GRAY_100 = colors.HexColor("#f4f4f5")
 GRAY_200 = colors.HexColor("#e4e4e7")
 GRAY_500 = colors.HexColor("#71717a")
 GRAY_700 = colors.HexColor("#3f3f46")
 GRAY_900 = colors.HexColor("#18181b")
+
+# ClearScript peer benchmark — must stay in sync with frontend
+# PEER_BENCHMARK constant in contracts/page.tsx. Numbers reflect the
+# typical contract distribution we see in the 1k-10k life self-insured
+# segment: median deal scores cluster in the high-40s because most
+# off-the-shelf PBM contracts retain spread, narrow rebate definitions,
+# and lock specialty channel.
+PEER_BENCHMARK = {
+    "deal_score_median": 47,
+    "sample_label": "self-insured PBM contracts (1k-10k lives)",
+}
+
+
+def _format_usd_short(n) -> str:
+    """Format a dollar amount as $1.2M / $420k / $850 — mirrors the
+    frontend formatUsdShort helper so PDF and live UI render the same."""
+    try:
+        v = float(n)
+    except (TypeError, ValueError):
+        return "—"
+    if not v:
+        return "$0"
+    if abs(v) >= 1_000_000:
+        return f"${v / 1_000_000:.1f}M"
+    if abs(v) >= 1_000:
+        return f"${round(v / 1_000)}k"
+    return f"${round(v)}"
+
+
+def _format_long_date(iso) -> str:
+    """Render an ISO YYYY-MM-DD date as 'January 1, 2024'. Returns the
+    raw string back if parsing fails."""
+    if not iso:
+        return "—"
+    try:
+        d = datetime.strptime(str(iso)[:10], "%Y-%m-%d")
+        return d.strftime("%B %-d, %Y") if hasattr(d, "strftime") else str(iso)
+    except (ValueError, TypeError):
+        try:
+            return datetime.strptime(str(iso)[:10], "%Y-%m-%d").strftime("%B %d, %Y")
+        except Exception:
+            return str(iso)
 
 
 def _build_styles():
@@ -225,6 +273,138 @@ def generate_contract_report(
     story.append(meta_table)
     story.append(Spacer(1, 0.3 * inch))
 
+    # ─── Contract Identification + Critical Dates ────────────────────────
+    # Mirrors the live-UI Contract Identification + Critical Dates cards
+    # so the PDF answers "WHICH contract is this" and "WHEN do we need
+    # to act" before the user reads any analytical content. Without these
+    # cards the PDF could be about any contract from any year, and the
+    # most actionable single piece of information (the notice deadline)
+    # was buried inside the body text.
+
+    contract_identification = (
+        analysis.get("contract_identification", {}) if isinstance(analysis, dict) else {}
+    ) or {}
+    if contract_identification and (
+        contract_identification.get("plan_sponsor_name")
+        or contract_identification.get("pbm_name")
+        or contract_identification.get("effective_date")
+    ):
+        # Parties header line
+        pbm_name = contract_identification.get("pbm_name") or "PBM"
+        sponsor_name = contract_identification.get("plan_sponsor_name") or "Plan Sponsor"
+        story.append(Paragraph(
+            f"<b>{pbm_name}</b> &nbsp;×&nbsp; <b>{sponsor_name}</b>",
+            ParagraphStyle(
+                "PartiesLine",
+                fontName="Helvetica",
+                fontSize=12,
+                textColor=NAVY,
+                spaceAfter=8,
+                leading=16,
+            ),
+        ))
+
+        # 4-field identification grid
+        ident_cells = []
+        if contract_identification.get("effective_date"):
+            ident_cells.append([
+                Paragraph("EFFECTIVE", ParagraphStyle("IdentLabel", fontName="Helvetica-Bold", fontSize=7, textColor=GRAY_500)),
+                Paragraph(_format_long_date(contract_identification.get("effective_date")), ParagraphStyle("IdentValue", fontName="Helvetica-Bold", fontSize=9.5, textColor=GRAY_900)),
+            ])
+        if contract_identification.get("initial_term_months") is not None:
+            ident_cells.append([
+                Paragraph("INITIAL TERM", ParagraphStyle("IdentLabel", fontName="Helvetica-Bold", fontSize=7, textColor=GRAY_500)),
+                Paragraph(f"{contract_identification.get('initial_term_months')} months", ParagraphStyle("IdentValue", fontName="Helvetica-Bold", fontSize=9.5, textColor=GRAY_900)),
+            ])
+        if contract_identification.get("current_term_end_date"):
+            ident_cells.append([
+                Paragraph("CURRENT TERM ENDS", ParagraphStyle("IdentLabel", fontName="Helvetica-Bold", fontSize=7, textColor=GRAY_500)),
+                Paragraph(_format_long_date(contract_identification.get("current_term_end_date")), ParagraphStyle("IdentValue", fontName="Helvetica-Bold", fontSize=9.5, textColor=GRAY_900)),
+            ])
+        if contract_identification.get("termination_notice_days") is not None:
+            ident_cells.append([
+                Paragraph("NOTICE REQUIRED", ParagraphStyle("IdentLabel", fontName="Helvetica-Bold", fontSize=7, textColor=GRAY_500)),
+                Paragraph(f"{contract_identification.get('termination_notice_days')} days", ParagraphStyle("IdentValue", fontName="Helvetica-Bold", fontSize=9.5, textColor=GRAY_900)),
+            ])
+
+        if ident_cells:
+            # Pad to 4 cells so the row stays a tidy 2x2 even if some
+            # fields were not extracted.
+            while len(ident_cells) < 4:
+                ident_cells.append([Paragraph("", styles["SmallText"]), Paragraph("—", styles["Body"])])
+            ident_table = Table(
+                [
+                    [
+                        Table([ident_cells[0]], colWidths=[1.5 * inch]),
+                        Table([ident_cells[1]], colWidths=[1.5 * inch]),
+                        Table([ident_cells[2]], colWidths=[1.5 * inch]),
+                        Table([ident_cells[3]], colWidths=[1.5 * inch]),
+                    ]
+                ],
+                colWidths=[1.55 * inch, 1.55 * inch, 1.55 * inch, 1.55 * inch],
+            )
+            ident_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), GRAY_50),
+                ("BOX", (0, 0), (-1, -1), 0.5, GRAY_200),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]))
+            story.append(ident_table)
+            story.append(Spacer(1, 0.15 * inch))
+
+        # Critical Dates callout — only renders if backend computed them
+        notice_deadline = contract_identification.get("notice_deadline_date")
+        days_until_term_end = contract_identification.get("days_until_term_end")
+        days_until_notice = contract_identification.get("days_until_notice_deadline")
+        rfp_recommended = contract_identification.get("rfp_start_recommended_date")
+        days_until_rfp = contract_identification.get("days_until_rfp_start")
+
+        if notice_deadline or days_until_term_end is not None:
+            critical_lines = []
+            if notice_deadline:
+                deadline_str = _format_long_date(notice_deadline)
+                if isinstance(days_until_notice, (int, float)):
+                    if days_until_notice < 0:
+                        urgency = f" — <b><font color='#dc2626'>Deadline passed {abs(int(days_until_notice))} days ago, early termination fee likely applies</font></b>"
+                    elif days_until_notice < 90:
+                        urgency = f" — <b><font color='#dc2626'>{int(days_until_notice)} days remaining</font></b>"
+                    else:
+                        urgency = f" — {int(days_until_notice)} days from today"
+                else:
+                    urgency = ""
+                critical_lines.append(f"<b>Notice deadline:</b> {deadline_str}{urgency}")
+            if rfp_recommended and isinstance(days_until_rfp, (int, float)):
+                rfp_str = _format_long_date(rfp_recommended)
+                if days_until_rfp < 0:
+                    rfp_note = " — recommended start date passed, begin immediately"
+                else:
+                    rfp_note = f" — {int(days_until_rfp)} days from today"
+                critical_lines.append(f"<b>Begin RFP process by:</b> {rfp_str}{rfp_note}")
+            if isinstance(days_until_term_end, (int, float)):
+                if days_until_term_end > 0:
+                    critical_lines.append(f"<b>Current term ends in:</b> {int(days_until_term_end)} days")
+                else:
+                    critical_lines.append(f"<b>Current term ended:</b> {abs(int(days_until_term_end))} days ago")
+
+            if critical_lines:
+                critical_table = Table(
+                    [[Paragraph("CRITICAL DATES", ParagraphStyle("CritHeader", fontName="Helvetica-Bold", fontSize=8, textColor=AMBER, spaceAfter=4))],
+                     [Paragraph("<br/>".join(critical_lines), ParagraphStyle("CritBody", fontName="Helvetica", fontSize=9.5, textColor=GRAY_900, leading=14))]],
+                    colWidths=[6.5 * inch],
+                )
+                critical_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), AMBER_BG),
+                    ("BOX", (0, 0), (-1, -1), 0.5, AMBER),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                    ("TOPPADDING", (0, 0), (-1, -1), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ]))
+                story.append(critical_table)
+                story.append(Spacer(1, 0.2 * inch))
+
     # ─── 1. Executive Summary ────────────────────────────────────────────
 
     risk_score = analysis.get("overall_risk_score", 0) if isinstance(analysis, dict) else 0
@@ -268,10 +448,24 @@ def generate_contract_report(
     if control_posture.get("headline"):
         control_text = f"<br/><br/><b>Control posture</b>: {control_posture.get('headline')}. {control_posture.get('summary', '')}"
 
+    # Peer comparison anchor — same numbers as PEER_BENCHMARK on the
+    # frontend so the PDF and live UI agree. Tells the reader where this
+    # contract sits relative to typical self-insured PBM deals.
+    try:
+        peer_delta = int(deal_score) - PEER_BENCHMARK["deal_score_median"]
+    except (TypeError, ValueError):
+        peer_delta = 0
+    peer_direction = "above" if peer_delta > 0 else "below" if peer_delta < 0 else "in line with"
+    peer_anchor_text = (
+        f"<font color='#71717a'>{abs(peer_delta)} pts {peer_direction} ClearScript median of "
+        f"{PEER_BENCHMARK['deal_score_median']} for {PEER_BENCHMARK['sample_label']}.</font>"
+    )
+
     score_data = [[
         Paragraph(f"{deal_score}", ParagraphStyle("Score", fontName="Helvetica-Bold", fontSize=40, textColor=score_color, alignment=TA_CENTER)),
         Paragraph(
-            f"<b>PBM Deal Score: {deal_score}/100</b><br/><br/>"
+            f"<b>PBM Deal Score: {deal_score}/100</b><br/>"
+            f"{peer_anchor_text}<br/><br/>"
             f"Weighted risk score: {weighted_risk} ({risk_label}). "
             f"This contract has {len(high_flags)} high-severity and {len(medium_flags)} medium-severity flags, "
             f"but the score is weighted toward rebate structure, spread pricing, specialty control, and audit rights."
@@ -366,10 +560,62 @@ def generate_contract_report(
                 story.append(Paragraph(f"<b>Recommendation:</b> {observation.get('recommendation')}", styles["SmallText"]))
             story.append(Spacer(1, 6))
 
+    # Compute total leakage dollars once so both the leakage banner and
+    # the redline reconciliation footer can reference the same numbers.
+    # Lifted out of the financial_exposure block so the reconciliation
+    # footer below works even when the leakage banner block was skipped.
+    bucket_dollars = []
+    for key in ("rebate_leakage", "spread_exposure", "specialty_control"):
+        item = financial_exposure.get(key) if isinstance(financial_exposure, dict) else None
+        if isinstance(item, dict) and item.get("dollar_estimate_low") is not None and item.get("dollar_estimate_high") is not None:
+            try:
+                bucket_dollars.append((float(item["dollar_estimate_low"]), float(item["dollar_estimate_high"])))
+            except (TypeError, ValueError):
+                pass
+    total_leakage_low = sum(b[0] for b in bucket_dollars)
+    total_leakage_high = sum(b[1] for b in bucket_dollars)
+
     if financial_exposure:
         story.append(Paragraph("Supporting Leakage Estimates", styles["SubHeader"]))
         if financial_exposure.get("summary"):
             story.append(Paragraph(str(financial_exposure.get("summary")), styles["Body"]))
+
+        # Total Annual Leakage banner — uses the totals computed above.
+        # Mirrors the live-UI hero banner so a CFO reading the PDF sees
+        # the bottom-line number first instead of mentally adding rows.
+        custom_loaded = bool(
+            isinstance(financial_exposure.get("claims_context"), dict)
+            and financial_exposure["claims_context"].get("custom_data_loaded")
+        )
+        if total_leakage_low > 0 or total_leakage_high > 0:
+            banner_label = "TOTAL ESTIMATED ANNUAL LEAKAGE"
+            banner_basis = (
+                "Based on uploaded claims data."
+                if custom_loaded
+                else "Illustrative — based on a representative 1,000-employee self-insured plan. Upload claims data to recompute against actual spend."
+            )
+            banner_table = Table(
+                [
+                    [Paragraph(banner_label, ParagraphStyle("LeakLabel", fontName="Helvetica-Bold", fontSize=8, textColor=RED))],
+                    [Paragraph(
+                        f"{_format_usd_short(total_leakage_low)} – {_format_usd_short(total_leakage_high)} <font size='10' color='#71717a'>/yr</font>",
+                        ParagraphStyle("LeakAmount", fontName="Helvetica-Bold", fontSize=22, textColor=GRAY_900, leading=26),
+                    )],
+                    [Paragraph(banner_basis, ParagraphStyle("LeakBasis", fontName="Helvetica", fontSize=8, textColor=GRAY_500, leading=11))],
+                ],
+                colWidths=[6.5 * inch],
+            )
+            banner_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#fecaca")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 14),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]))
+            story.append(banner_table)
+            story.append(Spacer(1, 8))
+
         exposure_rows = [["Area", "Level", "Directional Exposure", "Driver"]]
         for label, key in [
             ("Rebate Leakage", "rebate_leakage"),
@@ -378,10 +624,19 @@ def generate_contract_report(
         ]:
             item = financial_exposure.get(key)
             if isinstance(item, dict):
+                # Prefer the dollar-denominated estimate when available;
+                # fall back to the percentage string for older analyses.
+                if item.get("dollar_estimate_low") is not None and item.get("dollar_estimate_high") is not None:
+                    estimate_text = (
+                        f"{_format_usd_short(item['dollar_estimate_low'])}–"
+                        f"{_format_usd_short(item['dollar_estimate_high'])}/yr"
+                    )
+                else:
+                    estimate_text = str(item.get("estimate", ""))
                 exposure_rows.append([
                     label,
                     str(item.get("level", "")).upper(),
-                    str(item.get("estimate", "")),
+                    estimate_text,
                     Paragraph(str(item.get("driver", "")), styles["SmallText"]),
                 ])
         if len(exposure_rows) > 1:
@@ -586,12 +841,56 @@ def generate_contract_report(
             if not isinstance(redline, dict):
                 continue
 
-            # Section header
+            # Section header with savings + impact chips. Mirrors the
+            # live-UI redline header which now shows a green savings
+            # range chip and the source citation as a blue badge.
+            section_label = redline.get("section", f"Redline {i+1}")
+            impact_label = redline.get("impact", "")
+            savings_low = redline.get("savings_low")
+            savings_high = redline.get("savings_high")
+            has_savings = (
+                isinstance(savings_low, (int, float))
+                and isinstance(savings_high, (int, float))
+                and (savings_low > 0 or savings_high > 0)
+            )
+
+            header_chips = []
+            if has_savings:
+                header_chips.append(
+                    f"<font color='#065f46'>+{_format_usd_short(savings_low)}–"
+                    f"{_format_usd_short(savings_high)}/yr</font>"
+                )
+            if impact_label:
+                header_chips.append(f"<font color='#71717a'>{impact_label.upper()} IMPACT</font>")
+            chip_html = "  &nbsp;·&nbsp;  ".join(header_chips)
+
             story.append(Paragraph(
-                f"<b>{redline.get('section', f'Redline {i+1}')}</b>"
-                f"{'  [' + redline.get('impact', '').upper() + ' IMPACT]' if redline.get('impact') else ''}",
+                f"<b>{section_label}</b>" + (f"<br/><font size='8'>{chip_html}</font>" if chip_html else ""),
                 styles["SubHeader"],
             ))
+
+            # Source citation chip — promoted from inline gray text to a
+            # visible blue callout above the language blocks. Same
+            # treatment as the live UI.
+            source_text = redline.get("source", "")
+            if source_text:
+                source_table = Table(
+                    [[Paragraph(
+                        f"<b>Source:</b> {source_text}",
+                        ParagraphStyle("SourceChip", fontName="Helvetica", fontSize=8, textColor=BLUE, leading=11),
+                    )]],
+                    colWidths=[6.5 * inch],
+                )
+                source_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), BLUE_BG),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#bfdbfe")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]))
+                story.append(source_table)
+                story.append(Spacer(1, 4))
 
             # Current language (strikethrough effect via red color)
             current = redline.get("current_language", "")
@@ -625,14 +924,58 @@ def generate_contract_report(
                 story.append(suggested_table)
                 story.append(Spacer(1, 4))
 
-            # Rationale
+            # Rationale — source is now rendered as a blue chip above
+            # the language blocks, so this row only carries the
+            # why-it-matters explanation.
             rationale = redline.get("rationale", "")
-            source = redline.get("source", "")
             if rationale:
                 story.append(Paragraph(f"<b>Why:</b> {rationale}", styles["SmallText"]))
-            if source:
-                story.append(Paragraph(f"<b>Source:</b> {source}", styles["SmallText"]))
 
+            story.append(Spacer(1, 12))
+
+        # Reconciliation footer — rolls up the per-redline savings against
+        # the total annual leakage banner. Mirrors the live-UI footer:
+        # "Recover $X-$Y of $A-$B total leakage". Closes the math gap
+        # between individual redline chips and the headline number.
+        recovered_low = sum(
+            float(r.get("savings_low", 0) or 0)
+            for r in redlines if isinstance(r, dict)
+        )
+        recovered_high = sum(
+            float(r.get("savings_high", 0) or 0)
+            for r in redlines if isinstance(r, dict)
+        )
+        if (recovered_low > 0 or recovered_high > 0) and (total_leakage_low > 0 or total_leakage_high > 0):
+            try:
+                pct_low = round((recovered_low / total_leakage_high) * 100) if total_leakage_high else 0
+                pct_high = round((recovered_high / total_leakage_low) * 100) if total_leakage_low else 0
+            except (ZeroDivisionError, TypeError):
+                pct_low = pct_high = 0
+            recon_table = Table(
+                [
+                    [Paragraph("IF YOU ACCEPT ALL REDLINES", ParagraphStyle("ReconLabel", fontName="Helvetica-Bold", fontSize=8, textColor=EMERALD_DARK))],
+                    [Paragraph(
+                        f"Recover {_format_usd_short(recovered_low)}–{_format_usd_short(recovered_high)}/yr "
+                        f"<font size='9' color='#71717a'>of {_format_usd_short(total_leakage_low)}–{_format_usd_short(total_leakage_high)} total annual leakage</font>",
+                        ParagraphStyle("ReconAmount", fontName="Helvetica-Bold", fontSize=12, textColor=GRAY_900, leading=15),
+                    )],
+                    [Paragraph(
+                        f"Approximately {pct_low}–{pct_high}% of total leakage is directly recoverable through these clause changes. "
+                        "The remaining gap reflects structural issues (e.g. specialty channel lock-in) that require vendor changes or carve-outs rather than redline language.",
+                        ParagraphStyle("ReconBody", fontName="Helvetica", fontSize=8, textColor=GRAY_500, leading=11),
+                    )],
+                ],
+                colWidths=[6.5 * inch],
+            )
+            recon_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), EMERALD_BG),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#a7f3d0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]))
+            story.append(recon_table)
             story.append(Spacer(1, 12))
 
     # ─── 6. Plan Document Benefits (if provided) ────────────────────────
