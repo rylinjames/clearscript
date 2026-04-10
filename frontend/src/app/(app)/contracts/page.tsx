@@ -1091,7 +1091,7 @@ function ContractsPageInner() {
 
       <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">1</span>
+          <FileText className="w-5 h-5 text-primary-600" />
           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">PBM / TPA Contract</h2>
         </div>
         <FileUpload
@@ -2052,10 +2052,8 @@ function ContractsPageInner() {
           {contractRowId !== null && (
             <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6">
               <div className="flex items-center gap-2 mb-4">
-                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">
-                  {planBenefits ? "1.5" : "2"}
-                </span>
-                <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Upload Claims for This Contract</h2>
+                <DollarSign className="w-5 h-5 text-primary-600" />
+                <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Claims Data</h2>
                 {contractClaimsStatus?.has_claims && (
                   <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     <CheckCircle2 className="w-3 h-3" />
@@ -2097,7 +2095,7 @@ function ContractsPageInner() {
           {/* ═══ STEP 2: Plan Document Upload ═══ */}
           <div id="plan-document-upload" className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6 mb-6 scroll-mt-20">
             <div className="flex items-center gap-2 mb-4">
-              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">2</span>
+              <BookOpen className="w-5 h-5 text-primary-600" />
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Plan Document (SBC / SPD / EOC)</h2>
             </div>
             <p className="text-sm text-gray-500 mb-4">
@@ -2214,7 +2212,7 @@ function ContractsPageInner() {
               <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] overflow-hidden mb-6">
                 <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold">3</span>
+                    <BarChart3 className="w-5 h-5 text-primary-600" />
                     <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
                       Cross-Reference Analysis
                     </h3>
