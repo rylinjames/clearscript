@@ -29,220 +29,38 @@ import {
   History,
   Clock,
 } from "lucide-react";
-
-interface ExtractedTerm {
-  clause: string;
-  value: string;
-  status: "good" | "warning" | "critical";
-  note: string;
-}
-
-interface AuditChecklistItem {
-  item: string;
-  found: boolean;
-  details?: string;
-}
-
-interface EligibleRebateDefinition {
-  narrow_definition_flag: boolean;
-  excludes_admin_fees?: boolean;
-  excludes_volume_bonuses?: boolean;
-  excludes_price_protection?: boolean;
-  details?: string;
-}
-
-interface AnalysisExtras {
-  audit_rights?: {
-    checklist?: AuditChecklistItem[];
-    [key: string]: unknown;
-  };
-  eligible_rebate_definition?: EligibleRebateDefinition;
-  [key: string]: unknown;
-}
-
-interface PlanBenefits {
-  plan_info?: { plan_name?: string; carrier?: string; plan_type?: string; effective_date?: string; coverage_period?: string };
-  deductible?: Record<string, string | null>;
-  out_of_pocket_maximum?: Record<string, string | null>;
-  copays?: Record<string, string | null>;
-  coinsurance?: Record<string, string | null>;
-  prescription_drugs?: Record<string, unknown>;
-  hospital_services?: Record<string, string | null>;
-  exclusions_and_limits?: string[];
-  other_benefits?: Record<string, string | null>;
-  confidence_score?: number;
-  _generated_by?: string;
-}
-
-interface CrossRefFinding {
-  category: string;
-  finding: string;
-  severity: "high" | "medium" | "low";
-  contract_says: string;
-  plan_doc_says: string;
-  recommendation: string;
-}
-
-interface CrossRefResult {
-  summary: string;
-  overall_alignment_score: number;
-  findings: CrossRefFinding[];
-  action_items?: { priority: string; action: string; reason: string }[];
-  missing_from_contract?: string[];
-  missing_from_plan_doc?: string[];
-  _generated_by?: string;
-}
-
-interface WeightedAssessment {
-  deal_score?: number;
-  weighted_risk_score?: number;
-  risk_level?: string;
-  methodology?: string;
-  tier_scores?: { tier: string; score: number; weight: number }[];
-}
-
-interface TopRisk {
-  title: string;
-  tier: number;
-  severity: "high" | "medium" | "low";
-  why_it_matters: string;
-  recommendation: string;
-}
-
-interface ContractIdentification {
-  plan_sponsor_name?: string | null;
-  pbm_name?: string | null;
-  effective_date?: string | null;
-  initial_term_months?: number | null;
-  current_term_end_date?: string | null;
-  termination_notice_days?: number | null;
-  renewal_mechanism?: string | null;
-  // Computed by the backend's _attach_critical_dates helper:
-  notice_deadline_date?: string | null;
-  days_until_term_end?: number | null;
-  days_until_notice_deadline?: number | null;
-  rfp_start_recommended_date?: string | null;
-  days_until_rfp_start?: number | null;
-}
-
-interface FinancialExposureEntry {
-  level: string;
-  estimate: string;
-  driver: string;
-  // Dollar-denominated estimates added by the backend's
-  // _attach_dollar_exposure helper. Present whenever the backend has
-  // either real uploaded claims or the synthetic sample dataset to
-  // multiply the percentage range against.
-  dollar_estimate_low?: number;
-  dollar_estimate_high?: number;
-  dollar_denominator?: number;
-  dollar_denominator_label?: string;
-  dollar_estimate_basis?: "uploaded_claims" | "synthetic_sample";
-}
-
-interface FinancialExposure {
-  mode?: string;
-  summary?: string;
-  rebate_leakage?: FinancialExposureEntry;
-  spread_exposure?: FinancialExposureEntry;
-  specialty_control?: FinancialExposureEntry;
-  claims_context?: {
-    claims_count?: number;
-    claims_filename?: string;
-    date_range_start?: string;
-    date_range_end?: string;
-    custom_data_loaded?: boolean;
-    total_plan_paid?: number;
-    brand_spend?: number;
-    specialty_spend?: number;
-  };
-}
-
-// Format a dollar amount as "$420k" for >$1k or "$420" for less.
-// Used by the dollar-denominated leakage display.
-function formatUsdShort(n: number | undefined | null): string {
-  if (n == null || !isFinite(n)) return "—";
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `$${Math.round(n / 1_000)}k`;
-  return `$${Math.round(n)}`;
-}
-
-// Render an ISO YYYY-MM-DD date as "January 1, 2024" for the
-// Contract Identification card. Returns "—" for null/undefined/garbage.
-function formatLongDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso + "T00:00:00");
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
-
-// Render "in 267 days" / "267 days from today" / "21 days ago" as
-// neutral plain English so a benefits manager can scan the date
-// without doing math. Used by the Critical Dates card.
-function formatRelativeDays(days: number | null | undefined): string {
-  if (days == null || !isFinite(days)) return "";
-  if (days === 0) return "today";
-  if (days === 1) return "tomorrow";
-  if (days === -1) return "yesterday";
-  if (days > 0) return `${days} days from today`;
-  return `${Math.abs(days)} days ago`;
-}
-
-interface ControlMapItem {
-  lever: string;
-  controller: string;
-  assessment: string;
-  implication: string;
-}
-
-interface ControlPosture {
-  label: string;
-  level: string;
-  headline: string;
-  summary: string;
-  pbm_controlled_levers?: number;
-  shared_levers?: number;
-}
-
-interface StructuralRiskOverride {
-  triggered: boolean;
-  level: string;
-  minimum_weighted_risk_score?: number;
-  drivers?: string[];
-  headline: string;
-  rationale: string;
-}
-
-interface PastContract {
-  id: number;
-  filename: string;
-  analysis_date: string | null;
-  deal_score: number | null;
-  risk_level: string | null;
-}
-
-interface BenchmarkObservation {
-  kind: "strength" | "consideration";
-  title: string;
-  category: string;
-  tier: number;
-  severity: "high" | "medium" | "low";
-  benchmark_label: string;
-  benchmark: string;
-  benchmark_source: string;
-  observation: string;
-  implication: string;
-  recommendation: string;
-  supporting_detail?: string | null;
-}
+import type {
+  ExtractedTerm,
+  AuditChecklistItem,
+  EligibleRebateDefinition,
+  AnalysisExtras,
+  PlanBenefits,
+  CrossRefFinding,
+  CrossRefResult,
+  WeightedAssessment,
+  TopRisk,
+  ContractIdentification,
+  FinancialExposureEntry,
+  FinancialExposure,
+  ControlMapItem,
+  ControlPosture,
+  StructuralRiskOverride,
+  PastContract,
+  BenchmarkObservation,
+} from "@/types/contract";
+import {
+  formatUsdShort,
+  formatLongDate,
+  formatRelativeDays,
+  riskLevelStyles,
+  riskBadgeStyles,
+  observationKindStyles,
+  formatRiskLevel,
+  mapApiToTerms,
+  CLAUSE_LABELS,
+} from "@/lib/contract-utils";
+import ContractIdentificationCard from "@/components/contract/ContractIdentificationCard";
+import RecentAnalysesPicker from "@/components/contract/RecentAnalysesPicker";
 
 const analyzeCategories = [
   { icon: DollarSign, label: "Rebate Terms", description: "Passthrough guarantees, retention percentages" },
@@ -252,86 +70,6 @@ const analyzeCategories = [
   { icon: Tag, label: "MAC Pricing", description: "List transparency, update frequency, appeals" },
   { icon: XCircle, label: "Termination Provisions", description: "Notice periods, auto-renewal, exit fees" },
 ];
-
-// Allow-list of contract clause keys that get rendered as rows in the
-// extracted terms table. Anything not in this list is treated as
-// post-processing metadata (control_map, top_risks, immediate_actions,
-// benchmark_observations, weighted_assessment, redline_suggestions,
-// financial_exposure, structural_risk_override, control_posture, etc.)
-// and rendered by its own dedicated section elsewhere on the page.
-//
-// audit_rights is intentionally excluded — it has the eleven-point
-// dedicated audit-rights scorecard rendered below (auditChecklist).
-//
-// IMPORTANT: this list must be a whitelist, not a blacklist. The
-// previous implementation looped over every key in the analysis JSON
-// and skipped a hardcoded blacklist; every time enrich_contract_analysis
-// or the AI prompt added a new top-level field, that field would show
-// up as a phantom "Not found" row in the table. Whitelist iteration
-// is future-proof against that whole class of bug.
-const CLAUSE_LABELS: Record<string, string> = {
-  rebate_passthrough: "Rebate Passthrough",
-  spread_pricing: "Spread Pricing",
-  formulary_clauses: "Formulary Management",
-  mac_pricing: "MAC Pricing",
-  termination_provisions: "Termination Provisions",
-  gag_clauses: "Gag Clauses",
-  specialty_channel: "Specialty Channel Control",
-};
-
-function mapApiToTerms(a: Record<string, Record<string, unknown>>): ExtractedTerm[] {
-  const terms: ExtractedTerm[] = [];
-  // Iterate the whitelist, not the analysis object — guarantees we
-  // only ever try to render real contract clauses.
-  for (const key of Object.keys(CLAUSE_LABELS)) {
-    const val = a[key];
-    if (!val || typeof val !== "object") continue;
-    // Use favorability from AI if available, fall back to heuristic
-    const favorability = (val.favorability as string) || "";
-    let status: "good" | "warning" | "critical";
-    if (favorability === "employer_favorable") {
-      status = "good";
-    } else if (favorability === "neutral") {
-      status = "warning";
-    } else if (favorability === "pbm_favorable") {
-      status = "critical";
-    } else {
-      // Fallback heuristic
-      const details = ((val.details as string) || "").toLowerCase();
-      const hasIssue = details.includes("no ") || details.includes("not ") || details.includes("concern") || details.includes("narrow") || details.includes("limit") || details.includes("restrict") || details.includes("retain");
-      status = hasIssue ? "critical" : "good";
-    }
-    const extractedValue = (val.percentage || val.effective_passthrough || val.caps || (val.change_notification_days ? val.change_notification_days + " days" : null) || val.scope || val.notice_period || (val.notice_days ? val.notice_days + " days" : null) || val.mechanism || (val.found ? "Found" : "Not found")) as string;
-    terms.push({
-      clause: CLAUSE_LABELS[key],
-      value: extractedValue,
-      status,
-      note: (val.details as string) || "",
-    });
-  }
-  return terms;
-}
-
-function riskLevelStyles(level?: string) {
-  if (level === "high") return "bg-red-50 border-red-200 text-red-700";
-  if (level === "low") return "bg-emerald-50 border-emerald-200 text-emerald-700";
-  return "bg-amber-50 border-amber-200 text-amber-700";
-}
-
-function riskBadgeStyles(level?: string) {
-  if (level === "high") return "bg-red-100 text-red-800";
-  if (level === "low") return "bg-emerald-100 text-emerald-800";
-  return "bg-amber-100 text-amber-800";
-}
-
-function observationKindStyles(kind?: string) {
-  if (kind === "strength") return "bg-emerald-100 text-emerald-800";
-  return "bg-amber-100 text-amber-800";
-}
-
-function formatRiskLevel(level?: string) {
-  return (level || "moderate").replace(/^\w/, (c) => c.toUpperCase());
-}
 
 // Wrapped so the inner component can use useSearchParams. Next.js
 // App Router requires useSearchParams to be inside a Suspense boundary
@@ -942,82 +680,14 @@ function ContractsPageInner() {
         />
       </div>
 
-      {/* ═══ Recent Analyses picker ═══
-          Lists every previously-analyzed contract from the persisted
-          contracts table (/api/contracts/list). Each row is a one-click
-          shortcut back into a prior analysis — clicking it fetches the
-          full analysis from /api/contracts/{id} and re-populates the
-          page state as if the contract had just been uploaded. Solves
-          the "I clicked Draft Audit Letter and now I can't get back
-          to my analysis without rescanning" problem. Always rendered
-          when there are past contracts, regardless of whether a fresh
-          analysis is currently on screen, so users can switch between
-          contracts freely.
-      */}
-      {pastContracts.length > 0 && !loading && (
-        <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-primary-600" />
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Recent Analyses</h3>
-            </div>
-            <span className="text-xs text-gray-500">
-              {pastContracts.length} analyzed contract{pastContracts.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {pastContractsLoading ? (
-              <div className="text-xs text-gray-500 py-2">Loading...</div>
-            ) : (
-              pastContracts.map((c) => {
-                const isCurrent = loadedFromHistoryId === c.id;
-                const isLoading = loadingPastId === c.id;
-                const dateStr = c.analysis_date ? c.analysis_date.split(" ")[0] : "unknown date";
-                const scoreColor =
-                  c.deal_score === null ? "bg-gray-100 text-gray-700"
-                  : c.deal_score >= 60 ? "bg-emerald-100 text-emerald-700"
-                  : c.deal_score >= 30 ? "bg-amber-100 text-amber-700"
-                  : "bg-red-100 text-red-700";
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => loadContractFromHistory(c.id)}
-                    disabled={isLoading || loading}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors ${
-                      isCurrent
-                        ? "bg-blue-50 border-blue-200 cursor-default"
-                        : "bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300"
-                    } disabled:opacity-50`}
-                  >
-                    <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{c.filename}</p>
-                      <p className="text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5">
-                        <Clock className="w-2.5 h-2.5" />
-                        {dateStr}
-                        {c.risk_level && <span className="capitalize">· {c.risk_level} risk</span>}
-                      </p>
-                    </div>
-                    {c.deal_score !== null && (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${scoreColor}`}>
-                        {c.deal_score}/100
-                      </span>
-                    )}
-                    {isCurrent && (
-                      <span className="text-[11px] font-semibold text-blue-700 px-2 py-0.5 bg-white border border-blue-200 rounded">Viewing</span>
-                    )}
-                    {isLoading && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
-                  </button>
-                );
-              })
-            )}
-          </div>
-          <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
-            Click any contract to reopen its full analysis without re-uploading.
-          </p>
-        </div>
-      )}
+      <RecentAnalysesPicker
+        pastContracts={pastContracts}
+        pastContractsLoading={pastContractsLoading}
+        loadedFromHistoryId={loadedFromHistoryId}
+        loadingPastId={loadingPastId}
+        uploadInProgress={loading}
+        onSelect={loadContractFromHistory}
+      />
 
       {!terms && !loading && (
         <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-6">
@@ -1108,116 +778,7 @@ function ContractsPageInner() {
             </div>
           </div>
 
-          {/* ═══ Contract Identification + Critical Dates ═══
-              The Contract Identification card answers "WHICH contract did
-              we just analyze" — parties, effective date, term length. The
-              Critical Dates card answers "WHEN do I need to act" — current
-              term end, notice deadline, RFP start recommendation. Both
-              are populated by the AI's contract_identification block plus
-              the backend _attach_critical_dates helper. They render only
-              if at least one identification field is present, so old
-              analyses without the new prompt block degrade gracefully.
-          */}
-          {contractIdentification && (contractIdentification.plan_sponsor_name || contractIdentification.pbm_name || contractIdentification.effective_date) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-              {/* Contract Identification */}
-              <div className="bg-white rounded-xl border border-gray-200/60 shadow-[var(--shadow-card)] p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 mb-3">Contract Identification</p>
-                <div className="space-y-2.5">
-                  {(contractIdentification.plan_sponsor_name || contractIdentification.pbm_name) && (
-                    <div>
-                      <p className="text-base font-bold text-gray-900 leading-snug">
-                        {contractIdentification.pbm_name || "PBM"}
-                        <span className="text-gray-400 mx-2 font-normal">×</span>
-                        {contractIdentification.plan_sponsor_name || "Plan Sponsor"}
-                      </p>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {contractIdentification.effective_date && (
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Effective</p>
-                        <p className="font-medium text-gray-900">{formatLongDate(contractIdentification.effective_date)}</p>
-                      </div>
-                    )}
-                    {contractIdentification.initial_term_months != null && (
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Initial Term</p>
-                        <p className="font-medium text-gray-900">{contractIdentification.initial_term_months} months</p>
-                      </div>
-                    )}
-                    {contractIdentification.current_term_end_date && (
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Current Term Ends</p>
-                        <p className="font-medium text-gray-900">{formatLongDate(contractIdentification.current_term_end_date)}</p>
-                      </div>
-                    )}
-                    {contractIdentification.termination_notice_days != null && (
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-gray-500">Notice Required</p>
-                        <p className="font-medium text-gray-900">{contractIdentification.termination_notice_days} days</p>
-                      </div>
-                    )}
-                  </div>
-                  {contractIdentification.renewal_mechanism && (
-                    <p className="text-xs text-gray-500 leading-relaxed pt-1">
-                      {contractIdentification.renewal_mechanism}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Critical Dates */}
-              {(contractIdentification.notice_deadline_date || contractIdentification.days_until_term_end != null) && (
-                <div className="bg-gradient-to-br from-amber-50 to-white rounded-xl border border-amber-200 p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700 mb-3">Critical Dates</p>
-                  <div className="space-y-3">
-                    {contractIdentification.notice_deadline_date && (
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-amber-700">Notice Deadline</p>
-                        <p className="text-lg font-bold text-gray-900">
-                          {formatLongDate(contractIdentification.notice_deadline_date)}
-                        </p>
-                        {contractIdentification.days_until_notice_deadline != null && (
-                          <p className={`text-xs mt-0.5 ${
-                            contractIdentification.days_until_notice_deadline < 0
-                              ? "text-red-700 font-semibold"
-                              : contractIdentification.days_until_notice_deadline < 90
-                              ? "text-red-700 font-semibold"
-                              : "text-gray-600"
-                          }`}>
-                            {contractIdentification.days_until_notice_deadline < 0
-                              ? `Deadline passed ${Math.abs(contractIdentification.days_until_notice_deadline)} days ago — early termination fee likely applies`
-                              : `${formatRelativeDays(contractIdentification.days_until_notice_deadline)} to give notice without penalty`}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {contractIdentification.rfp_start_recommended_date && contractIdentification.days_until_rfp_start != null && (
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-amber-700">Begin RFP Process By</p>
-                        <p className="text-base font-semibold text-gray-900">
-                          {formatLongDate(contractIdentification.rfp_start_recommended_date)}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          {contractIdentification.days_until_rfp_start < 0
-                            ? "Recommended start date passed — begin immediately"
-                            : `${formatRelativeDays(contractIdentification.days_until_rfp_start)} — gives you negotiating leverage at the renewal table`}
-                        </p>
-                      </div>
-                    )}
-                    {contractIdentification.current_term_end_date && contractIdentification.days_until_term_end != null && (
-                      <div className="pt-2 border-t border-amber-100">
-                        <p className="text-xs text-gray-500">
-                          Current term ends in {contractIdentification.days_until_term_end > 0 ? `${contractIdentification.days_until_term_end} days` : `${Math.abs(contractIdentification.days_until_term_end)} days ago`}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <ContractIdentificationCard contractIdentification={contractIdentification} />
 
           {/* ═══ Cross-reference promotion banner ═══
               The Step 2 plan-document upload is the most differentiated
