@@ -345,9 +345,6 @@ export default function ClaimsPage() {
             Your data is loaded! View analysis:
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/reports" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 text-sm font-medium transition-colors">
-              Report Auditor <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
             <Link href="/rebates" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 text-sm font-medium transition-colors">
               Rebate Tracker <ArrowRight className="w-3.5 h-3.5" />
             </Link>
