@@ -43,10 +43,15 @@ async def analyze_disclosure_doc(file: UploadFile = File(...)):
     try:
         result = await analyze_disclosure(text)
     except Exception as e:
-        logger.error(f"Disclosure analysis failed: {e}")
+        import uuid
+        req_id = uuid.uuid4().hex[:8]
+        logger.error(f"Disclosure analysis failed [req_id={req_id}]: {e}", exc_info=True)
         raise HTTPException(
             status_code=503,
-            detail=f"AI disclosure analysis is currently unavailable: {e}",
+            detail=(
+                "AI disclosure analysis is temporarily unavailable. "
+                f"Please try again shortly. If the issue persists, reference request id {req_id}."
+            ),
         )
 
     try:
@@ -128,10 +133,15 @@ async def disclosure_cross_ref(
     try:
         result = await analyze_disclosure_with_contract(text, contract["analysis"])
     except Exception as e:
-        logger.error(f"Disclosure cross-reference failed: {e}")
+        import uuid
+        req_id = uuid.uuid4().hex[:8]
+        logger.error(f"Disclosure cross-reference failed [req_id={req_id}]: {e}", exc_info=True)
         raise HTTPException(
             status_code=503,
-            detail=f"AI disclosure cross-reference is currently unavailable: {e}",
+            detail=(
+                "AI disclosure cross-reference is temporarily unavailable. "
+                f"Please try again shortly. If the issue persists, reference request id {req_id}."
+            ),
         )
 
     return {

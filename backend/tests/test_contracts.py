@@ -82,7 +82,11 @@ def test_contract_upload_surfaces_ai_failure_as_503(client, monkeypatch, sample_
     assert r.status_code == 503
     detail = r.json()["detail"]
     assert "unavailable" in detail.lower()
-    assert "OpenAI API key invalid" in detail
+    # Must NOT leak the underlying exception text to the frontend —
+    # users see a generic message + a request id they can reference
+    # in support tickets. The raw exception is logged server-side.
+    assert "OpenAI API key invalid" not in detail
+    assert "request id" in detail.lower()
 
 
 def test_contract_upload_rejects_short_text(client, mock_ai):

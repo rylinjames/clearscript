@@ -4,6 +4,7 @@ Generates realistic pharmacy claims, benchmark, formulary, network, and complian
 with deliberate PBM overcharging patterns for demo purposes.
 """
 
+import os
 import random
 import hashlib
 from datetime import datetime, timedelta
@@ -111,8 +112,17 @@ def _pick_channel_pharmacy(drug: dict) -> dict:
     return {**ph, "channel": channel}
 
 # TEST-ONLY: generate_claims is no longer called by any production code path.
-# get_claims() returns [] when no real claims are uploaded.
+# get_claims() returns [] when no real claims are uploaded. Guarded by an
+# env flag so a drifted call site cannot silently reintroduce synthetic
+# claims into the production data path.
 def generate_claims(n: int = 500) -> List[Dict[str, Any]]:
+    if not os.getenv("CLEARSCRIPT_ALLOW_SYNTHETIC_CLAIMS"):
+        raise RuntimeError(
+            "generate_claims() is test-only and refuses to run in production. "
+            "Set CLEARSCRIPT_ALLOW_SYNTHETIC_CLAIMS=1 for local development or "
+            "unit tests. Production claims come from set_claims_data() after a "
+            "user upload."
+        )
     claims = []
     base_date = datetime(2025, 1, 1)
     for i in range(1, n + 1):

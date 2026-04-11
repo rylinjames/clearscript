@@ -3,9 +3,9 @@ logger = logging.getLogger(__name__)
 """Feature 1: Plan Intelligence — Contract Analysis + Plan Document (SBC/SPD/EOC) Parsing + Cross-Reference"""
 
 import os
-import io
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import Response
+from services.file_extraction import extract_text_from_upload, FileExtractionError
 from services.pipeline_service import run_contract_pipeline, get_pipeline_status
 from services.audit_rights_service import score_audit_rights
 from services.db_service import (
@@ -26,20 +26,6 @@ ALLOWED_EXTENSIONS = {".pdf", ".txt", ".docx"}
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
 
 
-def _extract_pdf_text(content: bytes) -> str:
-    """Extract text from PDF using pdfplumber."""
-    try:
-        import pdfplumber
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            pages = []
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    pages.append(text)
-            return "\n\n".join(pages)
-    except Exception as e:
-        logger.warning(f"pdfplumber extraction failed: {e}")
-        return ""
 
 
 @router.post("/upload")
@@ -64,14 +50,10 @@ async def upload_contract(file: UploadFile = File(...)):
 
     filename = file.filename.lower()
 
-    # Real PDF extraction
-    if filename.endswith(".pdf"):
-        text = _extract_pdf_text(content)
-    else:
-        try:
-            text = content.decode("utf-8", errors="ignore")
-        except Exception:
-            text = ""
+    try:
+        text = extract_text_from_upload(content, file.filename)
+    except FileExtractionError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     if len(text.strip()) < 50:
         raise HTTPException(
@@ -86,10 +68,15 @@ async def upload_contract(file: UploadFile = File(...)):
     try:
         result = await run_contract_pipeline(text)
     except Exception as e:
-        logger.error(f"Contract analysis pipeline failed: {e}")
+        import uuid
+        req_id = uuid.uuid4().hex[:8]
+        logger.error(f"Contract analysis pipeline failed [req_id={req_id}]: {e}", exc_info=True)
         raise HTTPException(
             status_code=503,
-            detail=f"AI contract analysis is currently unavailable: {e}",
+            detail=(
+                "AI contract analysis is temporarily unavailable. "
+                f"Please try again shortly. If the issue persists, reference request id {req_id}."
+            ),
         )
 
     # Run audit rights benchmark scoring against gold-standard template
@@ -158,13 +145,10 @@ async def upload_plan_document(file: UploadFile = File(...), contract_id: int | 
 
     filename = file.filename.lower()
 
-    if filename.endswith(".pdf"):
-        text = _extract_pdf_text(content)
-    else:
-        try:
-            text = content.decode("utf-8", errors="ignore")
-        except Exception:
-            text = ""
+    try:
+        text = extract_text_from_upload(content, file.filename)
+    except FileExtractionError:
+        text = ""
 
     if len(text.strip()) < 50:
         raise HTTPException(status_code=422, detail="Could not extract enough text from this document. Please upload a valid SBC, SPD, or EOC/COC.")

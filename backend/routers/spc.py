@@ -1,11 +1,11 @@
 """Feature 15: SPC (Summary of Plan Coverage) Parser — extract structured benefit data from SPC PDFs."""
 
 import logging
-import io
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
+from services.file_extraction import extract_text_from_upload, FileExtractionError
 from services.spc_service import parse_spc, compare_spcs
 from services.usage_service import log_file_upload
 
@@ -15,59 +15,11 @@ router = APIRouter(prefix="/api/spc", tags=["SPC Parser"])
 
 
 def _extract_text_from_upload(file_bytes: bytes, filename: str) -> str:
-    """
-    Extract text from an uploaded file.
-    Supports PDF (via PyPDF2/pdfplumber if available) and plain text.
-    """
-    if filename.lower().endswith(".pdf"):
-        # Try pdfplumber first (better table extraction), then PyPDF2
-        try:
-            import pdfplumber
-            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                pages = []
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        pages.append(text)
-                extracted = "\n\n".join(pages)
-                if extracted.strip():
-                    logger.info(f"Extracted {len(pages)} pages via pdfplumber from {filename}")
-                    return extracted
-        except ImportError:
-            logger.debug("pdfplumber not available, trying PyPDF2")
-        except Exception as e:
-            logger.warning(f"pdfplumber extraction failed: {e}, trying PyPDF2")
-
-        try:
-            from PyPDF2 import PdfReader
-            reader = PdfReader(io.BytesIO(file_bytes))
-            pages = []
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    pages.append(text)
-            extracted = "\n\n".join(pages)
-            if extracted.strip():
-                logger.info(f"Extracted {len(pages)} pages via PyPDF2 from {filename}")
-                return extracted
-        except ImportError:
-            logger.warning("Neither pdfplumber nor PyPDF2 available for PDF extraction")
-        except Exception as e:
-            logger.warning(f"PyPDF2 extraction failed: {e}")
-
-        raise HTTPException(
-            status_code=422,
-            detail="Could not extract text from PDF. Install pdfplumber or PyPDF2, or upload a plain text file.",
-        )
-
-    # Plain text file
+    """Thin wrapper that translates FileExtractionError → HTTP 422."""
     try:
-        return file_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        try:
-            return file_bytes.decode("latin-1")
-        except Exception:
-            raise HTTPException(status_code=422, detail="Could not decode file as text. Please upload a PDF or UTF-8 text file.")
+        return extract_text_from_upload(file_bytes, filename)
+    except FileExtractionError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 class SPCTextRequest(BaseModel):
